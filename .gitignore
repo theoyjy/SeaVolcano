@@ -1,10 +1,9 @@
 **/Debug/*
 Debug/*
 */Release/*
-*.blend*
+*.blend1
 *.png
 *.mp4
-*.dae
 .vs/*
 *.fbx
 *.ipch
