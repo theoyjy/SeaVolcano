@@ -1,5 +1,6 @@
-/Debug/*
-/Release/*
+**/Debug/*
+Debug/*
+*/Release/*
 *.blend*
 *.png
 *.mp4
@@ -7,3 +8,6 @@
 .vs/*
 *.fbx
 *.ipch
+*.obj
+*.vcx*
+*.tlog

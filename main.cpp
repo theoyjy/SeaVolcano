@@ -18,7 +18,7 @@
 
 // Project includes
 #include "maths_funcs.h"
-
+#include <filesystem>
 
 
 /*----------------------------------------------------------------------------
@@ -26,7 +26,7 @@ MESH TO LOAD
 ----------------------------------------------------------------------------*/
 // this mesh is a dae file format but you should be able to use any other format too, obj is typically what is used
 // put the mesh in your project directory, or provide a filepath for it here
-#define MESH_NAME "spoon.dae"
+#define MESH_NAME "../Assets/Volcano.dae"
 /*----------------------------------------------------------------------------
 ----------------------------------------------------------------------------*/
 
@@ -37,7 +37,7 @@ typedef struct ModelData
 	std::vector<vec3> mVertices;
 	std::vector<vec3> mNormals;
 	std::vector<vec2> mTextureCoords;
-};
+} ModelData;
 #pragma endregion SimpleTypes
 
 using namespace std;
@@ -50,6 +50,7 @@ int height = 600;
 
 GLuint loc1, loc2, loc3;
 GLfloat rotate_y = 0.0f;
+vec3 translation{ 0.0f, 0.0f, 0.0f };
 
 
 #pragma region MESH LOADING
@@ -65,13 +66,17 @@ ModelData load_mesh(const char* file_name) {
 	/* relevant if there are multiple meshes in the model file that   */
 	/* are offset from the origin. This is pre-transform them so      */
 	/* they're in the right position.                                 */
+	/*filesystem::path p(file_name);
+	cout << "application current path " << filesystem::current_path() << endl;
+	cout << "file path " << filesystem::absolute(p) << endl;*/
+
 	const aiScene* scene = aiImportFile(
 		file_name,
 		aiProcess_Triangulate | aiProcess_PreTransformVertices
 	);
 
 	if (!scene) {
-		fprintf(stderr, "ERROR: reading mesh %s\n", file_name);
+		fprintf(stderr, "ERROR: reading mesh %s\n", filesystem::path(file_name).c_str());
 		return modelData;
 	}
 
@@ -117,7 +122,13 @@ char* readShaderSource(const char* shaderFile) {
 	FILE* fp;
 	fopen_s(&fp, shaderFile, "rb");
 
-	if (fp == NULL) { return NULL; }
+	filesystem::path p(shaderFile);
+
+	if (fp == NULL) {
+		cout << "application current path " << filesystem::current_path() << endl;
+		cout << "file path " << filesystem::absolute(p) << endl;
+		return NULL; 
+	}
 
 	fseek(fp, 0L, SEEK_END);
 	long size = ftell(fp);
@@ -180,8 +191,8 @@ GLuint CompileShaders()
 	}
 
 	// Create two shader objects, one for the vertex, and one for the fragment shader
-	AddShader(shaderProgramID, "simpleVertexShader.txt", GL_VERTEX_SHADER);
-	AddShader(shaderProgramID, "simpleFragmentShader.txt", GL_FRAGMENT_SHADER);
+	AddShader(shaderProgramID, "../simpleVertexShader.txt", GL_VERTEX_SHADER);
+	AddShader(shaderProgramID, "../simpleFragmentShader.txt", GL_FRAGMENT_SHADER);
 
 	GLint Success = 0;
 	GLchar ErrorLog[1024] = { '\0' };
@@ -268,7 +279,7 @@ void display() {
 	// tell GL to only draw onto a pixel if the shape is closer to the viewer
 	glEnable(GL_DEPTH_TEST); // enable depth-testing
 	glDepthFunc(GL_LESS); // depth-testing interprets a smaller value as "closer"
-	glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+	glClearColor(0.0f, 0.0f, 0.5f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glUseProgram(shaderProgramID);
 
@@ -283,8 +294,10 @@ void display() {
 	mat4 view = identity_mat4();
 	mat4 persp_proj = perspective(45.0f, (float)width / (float)height, 0.1f, 1000.0f);
 	mat4 model = identity_mat4();
-	model = rotate_z_deg(model, rotate_y);
+	//model = rotate_z_deg(model, rotate_y);
+	model = rotate_z_deg(model, 180);
 	view = translate(view, vec3(0.0, 0.0, -10.0f));
+	view = translate(view, translation);
 
 	// update uniforms & draw
 	glUniformMatrix4fv(proj_mat_location, 1, GL_FALSE, persp_proj.m);
@@ -292,18 +305,17 @@ void display() {
 	glUniformMatrix4fv(matrix_location, 1, GL_FALSE, model.m);
 	glDrawArrays(GL_TRIANGLES, 0, mesh_data.mPointCount);
 
-	// Set up the child matrix
-	mat4 modelChild = identity_mat4();
-	modelChild = rotate_z_deg(modelChild, 180);
-	modelChild = rotate_y_deg(modelChild, rotate_y);
-	modelChild = translate(modelChild, vec3(0.0f, 1.9f, 0.0f));
+	//// Set up the child matrix
+	//mat4 modelChild = identity_mat4();
+	////modelChild = rotate_y_deg(modelChild, rotate_y);
+	//modelChild = translate(modelChild, vec3(0.0f, 1.9f, 0.0f));
 
-	// Apply the root matrix to the child matrix
-	modelChild = model * modelChild;
+	//// Apply the root matrix to the child matrix
+	//modelChild = model * modelChild;
 
-	// Update the appropriate uniform and draw the mesh again
-	glUniformMatrix4fv(matrix_location, 1, GL_FALSE, modelChild.m);
-	glDrawArrays(GL_TRIANGLES, 0, mesh_data.mPointCount);
+	//// Update the appropriate uniform and draw the mesh again
+	//glUniformMatrix4fv(matrix_location, 1, GL_FALSE, modelChild.m);
+	//glDrawArrays(GL_TRIANGLES, 0, mesh_data.mPointCount);
 
 	glutSwapBuffers();
 }
@@ -319,8 +331,8 @@ void updateScene() {
 	last_time = curr_time;
 
 	// Rotate the model slowly around the y axis at 20 degrees per second
-	rotate_y += 20.0f * delta;
-	rotate_y = fmodf(rotate_y, 360.0f);
+	//rotate_y += 20.0f * delta;
+	//rotate_y = fmodf(rotate_y, 360.0f);
 
 	// Draw the next frame
 	glutPostRedisplay();
@@ -338,8 +350,29 @@ void init()
 
 // Placeholder code for the keypress
 void keypress(unsigned char key, int x, int y) {
-	if (key == 'x') {
+	if (key == 'a') {
 		//Translate the base, etc.
+		translation.v[0] += 0.1f;
+	}
+	else if (key == 'd')
+	{
+		translation.v[0] -= 0.1f;
+	}
+	else if (key == 'w')
+	{
+		translation.v[1] -= 0.1f;
+	}
+	else if (key == 's')
+	{
+		translation.v[1] += 0.1f;
+	}
+	else if (key == 'q')
+	{
+		translation.v[2] += 0.1f;
+	}
+	else if (key == 'e')
+	{
+		translation.v[2] -= 0.1f;
 	}
 }
 
