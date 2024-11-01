@@ -26,7 +26,7 @@ MESH TO LOAD
 ----------------------------------------------------------------------------*/
 // this mesh is a dae file format but you should be able to use any other format too, obj is typically what is used
 // put the mesh in your project directory, or provide a filepath for it here
-#define VOLCANO_MESH "Assets/Volcano.dae"
+#define VOLCANO_MESH "Assets/Volcano.fbx"
 //#define MUSSELS_MESH "../Assets/Mussels.dae"
 /*----------------------------------------------------------------------------
 ----------------------------------------------------------------------------*/
@@ -78,7 +78,7 @@ ModelData load_mesh(const char* file_name) {
 
 	const aiScene* scene = aiImportFile(
 		file_name,
-		aiProcess_Triangulate | aiProcess_PreTransformVertices
+		aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_GlobalScale
 	);
 
 	if (!scene) {
@@ -132,6 +132,7 @@ ModelData load_mesh(const char* file_name) {
 	}
 
 	aiReleaseImport(scene);
+	cout << "finish load mesh\n";
 	return modelData;
 }
 
@@ -338,6 +339,7 @@ void generateObjectBufferMesh() {
 
 	//// ½â°ó VAO
 	//glBindVertexArray(0);
+	cout << "finish generate object buffer mesh\n";
 }
 #pragma endregion VBO_FUNCTIONS
 
@@ -433,6 +435,7 @@ void init()
 float speed = 0.5f;
 // Placeholder code for the keypress
 void keypress(unsigned char key, int x, int y) {
+	cout << "key: " << key << endl;
 	if (key == 'a') {
 		//Translate the base, etc.
 		translation.v[0] += speed;
