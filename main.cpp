@@ -26,7 +26,8 @@ MESH TO LOAD
 ----------------------------------------------------------------------------*/
 // this mesh is a dae file format but you should be able to use any other format too, obj is typically what is used
 // put the mesh in your project directory, or provide a filepath for it here
-#define MESH_NAME "../Assets/Volcano.dae"
+#define VOLCANO_MESH "Assets/Volcano.dae"
+//#define MUSSELS_MESH "../Assets/Mussels.dae"
 /*----------------------------------------------------------------------------
 ----------------------------------------------------------------------------*/
 
@@ -37,16 +38,21 @@ typedef struct ModelData
 	std::vector<vec3> mVertices;
 	std::vector<vec3> mNormals;
 	std::vector<vec2> mTextureCoords;
+	std::vector<float> normalLines;
 } ModelData;
 #pragma endregion SimpleTypes
 
 using namespace std;
-GLuint shaderProgramID;
+GLuint shaderProgramID/*, normalShaderID*/;
+
 
 ModelData mesh_data;
 unsigned int mesh_vao = 0;
 int width = 800;
 int height = 600;
+
+//GLuint normalVBO, normalVAO;
+
 
 GLuint loc1, loc2, loc3;
 GLfloat rotate_y = 0.0f;
@@ -96,6 +102,20 @@ ModelData load_mesh(const char* file_name) {
 			if (mesh->HasNormals()) {
 				const aiVector3D* vn = &(mesh->mNormals[v_i]);
 				modelData.mNormals.push_back(vec3(vn->x, vn->y, vn->z));
+				//// 顶点位置
+				//aiVector3D vertex = mesh->mVertices[v_i];
+				//// 法线向量
+				//aiVector3D normal = mesh->mNormals[v_i];
+
+				//// 线段起点
+				//modelData.normalLines.push_back(vertex.x);
+				//modelData.normalLines.push_back(vertex.y);
+				//modelData.normalLines.push_back(vertex.z);
+
+				//// 线段终点（起点 + 缩放后的法线）
+				//modelData.normalLines.push_back(vertex.x + normal.x * 100);
+				//modelData.normalLines.push_back(vertex.y + normal.y * 100);
+				//modelData.normalLines.push_back(vertex.z + normal.z * 100);
 			}
 			if (mesh->HasTextureCoords(0)) {
 				const aiVector3D* vt = &(mesh->mTextureCoords[0][v_i]);
@@ -107,6 +127,7 @@ ModelData load_mesh(const char* file_name) {
 				/* data for you. Take a look at the flags that aiImportFile  */
 				/* can take.                                                 */
 			}
+
 		}
 	}
 
@@ -191,8 +212,9 @@ GLuint CompileShaders()
 	}
 
 	// Create two shader objects, one for the vertex, and one for the fragment shader
-	AddShader(shaderProgramID, "../simpleVertexShader.txt", GL_VERTEX_SHADER);
-	AddShader(shaderProgramID, "../simpleFragmentShader.txt", GL_FRAGMENT_SHADER);
+	AddShader(shaderProgramID, "simpleVertexShader.txt", GL_VERTEX_SHADER);
+	AddShader(shaderProgramID, "simpleFragmentShader.txt", GL_FRAGMENT_SHADER);
+
 
 	GLint Success = 0;
 	GLchar ErrorLog[1024] = { '\0' };
@@ -222,6 +244,36 @@ GLuint CompileShaders()
 	// Finally, use the linked shader program
 	// Note: this program will stay in effect for all draw calls until you replace it with another or explicitly disable its use
 	glUseProgram(shaderProgramID);
+
+
+	//normalShaderID = glCreateProgram();
+	//AddShader(normalShaderID, "../NormalVertexShader.txt", GL_VERTEX_SHADER);
+	//AddShader(normalShaderID, "../NormalFragmentShader.txt", GL_FRAGMENT_SHADER);
+	//glLinkProgram(normalShaderID);
+	//glGetProgramiv(normalShaderID, GL_LINK_STATUS, &Success);
+	//if (Success == 0) {
+	//	glGetProgramInfoLog(normalShaderID, sizeof(ErrorLog), NULL, ErrorLog);
+	//	std::cerr << "Error linking shader program: " << ErrorLog << std::endl;
+	//	std::cerr << "Press enter/return to exit..." << std::endl;
+	//	std::cin.get();
+	//	exit(1);
+	//}
+
+	//// program has been successfully linked but needs to be validated to check whether the program can execute given the current pipeline state
+	//glValidateProgram(normalShaderID);
+	//// check for program related errors using glGetProgramiv
+	//glGetProgramiv(normalShaderID, GL_VALIDATE_STATUS, &Success);
+	//if (!Success) {
+	//	glGetProgramInfoLog(normalShaderID, sizeof(ErrorLog), NULL, ErrorLog);
+	//	std::cerr << "Invalid shader program: " << ErrorLog << std::endl;
+	//	std::cerr << "Press enter/return to exit..." << std::endl;
+	//	std::cin.get();
+	//	exit(1);
+	//}
+	//// Finally, use the linked shader program
+	//// Note: this program will stay in effect for all draw calls until you replace it with another or explicitly disable its use
+	//glUseProgram(normalShaderID);
+
 	return shaderProgramID;
 }
 #pragma endregion SHADER_FUNCTIONS
@@ -236,7 +288,7 @@ void generateObjectBufferMesh() {
 	//Note: you may get an error "vector subscript out of range" if you are using this code for a mesh that doesnt have positions and normals
 	//Might be an idea to do a check for that before generating and binding the buffer.
 
-	mesh_data = load_mesh(MESH_NAME);
+	mesh_data = load_mesh(VOLCANO_MESH);
 	unsigned int vp_vbo = 0;
 	loc1 = glGetAttribLocation(shaderProgramID, "vertex_position");
 	loc2 = glGetAttribLocation(shaderProgramID, "vertex_normal");
@@ -270,6 +322,22 @@ void generateObjectBufferMesh() {
 	//	glEnableVertexAttribArray (loc3);
 	//	glBindBuffer (GL_ARRAY_BUFFER, vt_vbo);
 	//	glVertexAttribPointer (loc3, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+	
+	//// 解绑 VAO
+	//glBindVertexArray(0);
+
+	//// 生成并绑定法线 VAO 和 VBO
+	//glGenVertexArrays(1, &normalVAO);
+	//glGenBuffers(1, &normalVBO);
+
+	//glBindVertexArray(normalVAO);
+	//glBindBuffer(GL_ARRAY_BUFFER, normalVBO);
+	//glBufferData(GL_ARRAY_BUFFER, mesh_data.normalLines.size() * sizeof(float), mesh_data.normalLines.data(), GL_STATIC_DRAW);
+	//glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+	//glEnableVertexAttribArray(0);
+
+	//// 解绑 VAO
+	//glBindVertexArray(0);
 }
 #pragma endregion VBO_FUNCTIONS
 
@@ -278,11 +346,13 @@ void display() {
 
 	// tell GL to only draw onto a pixel if the shape is closer to the viewer
 	glEnable(GL_DEPTH_TEST); // enable depth-testing
+	//glEnable(GL_CULL_FACE);
+	//glCullFace(GL_BACK);
 	glDepthFunc(GL_LESS); // depth-testing interprets a smaller value as "closer"
 	glClearColor(0.0f, 0.0f, 0.5f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	
 	glUseProgram(shaderProgramID);
-
 
 	//Declare your uniform variables that will be used in your shader
 	int matrix_location = glGetUniformLocation(shaderProgramID, "model");
@@ -295,8 +365,7 @@ void display() {
 	mat4 persp_proj = perspective(45.0f, (float)width / (float)height, 0.1f, 1000.0f);
 	mat4 model = identity_mat4();
 	//model = rotate_z_deg(model, rotate_y);
-	model = rotate_z_deg(model, 180);
-	view = translate(view, vec3(0.0, 0.0, -10.0f));
+	view = translate(view, vec3(0.0, -2.0, -25.0));
 	view = translate(view, translation);
 
 	// update uniforms & draw
@@ -316,6 +385,19 @@ void display() {
 	//// Update the appropriate uniform and draw the mesh again
 	//glUniformMatrix4fv(matrix_location, 1, GL_FALSE, modelChild.m);
 	//glDrawArrays(GL_TRIANGLES, 0, mesh_data.mPointCount);
+
+	//// 使用法线的着色器
+	//glUseProgram(normalShaderID);
+	//// 禁用深度测试，以防止法线被遮挡
+	//glDisable(GL_DEPTH_TEST);
+	//glUniformMatrix4fv(proj_mat_location, 1, GL_FALSE, persp_proj.m);
+	//glUniformMatrix4fv(view_mat_location, 1, GL_FALSE, view.m);
+	//glUniformMatrix4fv(matrix_location, 1, GL_FALSE, model.m);
+	//glBindVertexArray(normalVAO); // 绑定法线的 VAO
+	//glDrawArrays(GL_LINES, 0, mesh_data.normalLines.size() / 3);
+	//glBindVertexArray(0);
+	//// 重新启用深度测试
+	//glEnable(GL_DEPTH_TEST);
 
 	glutSwapBuffers();
 }
@@ -348,31 +430,36 @@ void init()
 
 }
 
+float speed = 0.5f;
 // Placeholder code for the keypress
 void keypress(unsigned char key, int x, int y) {
 	if (key == 'a') {
 		//Translate the base, etc.
-		translation.v[0] += 0.1f;
+		translation.v[0] += speed;
 	}
 	else if (key == 'd')
 	{
-		translation.v[0] -= 0.1f;
+		translation.v[0] -= speed;
 	}
 	else if (key == 'w')
 	{
-		translation.v[1] -= 0.1f;
+		translation.v[2] += speed;
 	}
 	else if (key == 's')
 	{
-		translation.v[1] += 0.1f;
+		translation.v[2] -= speed;
 	}
 	else if (key == 'q')
 	{
-		translation.v[2] += 0.1f;
+		translation.v[1] -= speed;
 	}
 	else if (key == 'e')
 	{
-		translation.v[2] -= 0.1f;
+		translation.v[1] += speed;
+	}
+	else if (key == 'r')
+	{
+		translation = vec3(0.0f, 0.0f, 0.0f);
 	}
 }
 
@@ -382,7 +469,7 @@ int main(int argc, char** argv) {
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
 	glutInitWindowSize(width, height);
-	glutCreateWindow("Hello Triangle");
+	glutCreateWindow("Underwater volcano");
 
 	// Tell glut where the display function is
 	glutDisplayFunc(display);

@@ -10,3 +10,5 @@ Debug/*
 *.obj
 *.vcx*
 *.tlog
+*.dae
+*.blend

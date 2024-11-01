@@ -34,6 +34,8 @@
     <Text Include="simpleFragmentShader.txt">
       <Filter>Source Files</Filter>
     </Text>
+    <Text Include="NormalVertexShader.txt" />
+    <Text Include="NormalFragmentShader.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="monkeyhead_smooth.dae">

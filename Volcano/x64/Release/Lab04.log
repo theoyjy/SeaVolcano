@@ -1,0 +1,15 @@
+﻿  main.cpp
+D:\Code\SeaVolcano\main.cpp(85,19): warning C4477: 'fprintf' : format string '%s' requires an argument of type 'char *', but variadic argument 1 has type 'const std::filesystem::path::value_type *'
+D:\Code\SeaVolcano\main.cpp(375,41): warning C4267: 'argument': conversion from 'size_t' to 'GLsizei', possible loss of data
+  maths_funcs.cpp
+main.obj : error LNK2001: unresolved external symbol __imp___glutCreateWindowWithExit
+main.obj : error LNK2001: unresolved external symbol __imp___glutInitWithExit
+main.obj : error LNK2001: unresolved external symbol __imp_glutPostRedisplay
+main.obj : error LNK2001: unresolved external symbol __imp_glutKeyboardFunc
+main.obj : error LNK2001: unresolved external symbol __imp_glutIdleFunc
+main.obj : error LNK2001: unresolved external symbol __imp_glutInitDisplayMode
+main.obj : error LNK2001: unresolved external symbol __imp_glutDisplayFunc
+main.obj : error LNK2001: unresolved external symbol __imp_glutMainLoop
+main.obj : error LNK2001: unresolved external symbol __imp_glutInitWindowSize
+main.obj : error LNK2001: unresolved external symbol __imp_glutSwapBuffers
+D:\Code\SeaVolcano\x64\Release\Volcano.exe : fatal error LNK1120: 10 unresolved externals
