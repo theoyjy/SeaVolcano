@@ -2,6 +2,7 @@
 Debug/*
 */Release/*
 *.blend1
+*.blend
 *.png
 *.mp4
 .vs/*
@@ -11,4 +12,6 @@ Debug/*
 *.vcx*
 *.tlog
 *.dae
+/Assets/**
 *.blend
+*.dae
