@@ -72,12 +72,12 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>D:\Code\Assimp\assimp\include;D:\Code\Assimp\assimp\build\include;D:\Code\freeglut-master\include;C:\msys64\mingw64\include\;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\Code\Assimp\assimp\build\lib\Debug;C:\msys64\mingw64\lib;D:\Code\freeglut-master\build\lib\Debug;$(LibraryPath)</LibraryPath>
+    <IncludePath>D:\Code\glm-1.0.1-light\glm;D:\Code\Assimp\assimp\include;D:\Code\Assimp\assimp\build\include;D:\Code\freeglut-master\include;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\Code\glew-1.10.0\lib\Release\x64;D:\Code\Assimp\assimp\build\lib\Debug;D:\Code\freeglut-master\build\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>D:\Code\Assimp\assimp\build\include;D:\Code\freeglut-master\include;C:\msys64\mingw64\include\;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\Code\freeglut\lib;C:\msys64\mingw64\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>D:\Code\glm-1.0.1-light\glm;D:\Code\Assimp\assimp\build\include;D:\Code\freeglut-master\include;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\Code\freeglut\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -128,7 +128,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>
       </AdditionalLibraryDirectories>
-      <AdditionalDependencies>assimp-vc143-mtd.lib;freeglutd.lib;libglew32.dll.a</AdditionalDependencies>
+      <AdditionalDependencies>assimp-vc143-mtd.lib;freeglutd.lib;glew32.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -155,14 +155,14 @@
     <ClCompile Include="maths_funcs.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CameraControl.hpp" />
     <ClInclude Include="maths_funcs.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="monkeyhead_smooth.dae" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="NormalFragmentShader.txt" />
-    <Text Include="NormalVertexShader.txt" />
+    <Text Include="animationVertexShader.txt" />
     <Text Include="simpleFragmentShader.txt" />
     <Text Include="simpleVertexShader.txt" />
   </ItemGroup>

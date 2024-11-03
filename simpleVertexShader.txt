@@ -1,61 +1,26 @@
-#version 330
+#version 440
 
 in vec3 vertex_position;
 in vec3 vertex_normal;
 
-out vec3 LightIntensity;
-
-vec4 VolcanoLightPosition = vec4(0.0, 2.0, 0.0, 1.0); // Volcano light position in world coordinates.
-vec3 VolcanoKd = vec3(1.0, 0.0, 0.0); // Red diffuse reflectance for volcano
-vec3 VolcanoLd = vec3(1.0, 1.0, 1.0); // White light intensity for volcano
-
-vec4 SeaLightPosition1 = vec4(-25.0, -10.0, -25.0, 1.0); // Sea light position in world coordinates.
-vec4 SeaLightPosition2 = vec4(25.0, -10.0, 25.0, 1.0); // Sea light position in world coordinates.
-vec4 SeaLightPosition3 = vec4(-25.0, -10.0, 25.0, 1.0); // Sea light position in world coordinates.
-vec4 SeaLightPosition4 = vec4(25.0, -10.0, -25.0, 1.0); // Sea light position in world coordinates.
-
-vec3 SeaKd = vec3(0.0, 0.0, 0.6); // Blue diffuse reflectance for sea light
-vec3 SeaLd = vec3(1.0, 1.0, 1.0); // White light intensity for sea light
+out vec4 EyeCoords;
+out vec3 Normal;
 
 uniform mat4 view;
 uniform mat4 proj;
 uniform mat4 model;
 
-vec3 CalcLightIntensity(vec4 LightPosition, vec3 normal, vec3 Kd, vec3 Ld, vec4 eyeCoords, float constant, float linear, float quadratic) {
-    // Calculate the distance from the light to the fragment in view space
-    float distance = length(LightPosition.xyz - eyeCoords.xyz);
-    float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
-    
-    // Calculate the direction from the fragment to the light source
-    vec3 s = normalize(vec3(LightPosition - eyeCoords));
-    
-    // Diffuse lighting calculation
-    return Ld * Kd * max(dot(s, normal), 0.0) * attenuation;
-}
-
 void main() {
-    // Initialize LightIntensity to zero
-    LightIntensity = vec3(0.0);
 
     // Model-view matrix and normal transformation
     mat4 ModelViewMatrix = view * model;
     mat3 NormalMatrix = mat3(ModelViewMatrix);
     
     // Transform normal to view space and normalize it
-    vec3 tnorm = normalize(NormalMatrix * vertex_normal);
+    Normal = normalize(NormalMatrix * vertex_normal);
     
     // Transform vertex position to view space
-    vec4 eyeCoords = ModelViewMatrix * vec4(vertex_position, 1.0);
-
-    // Calculate volcano light contribution
-    LightIntensity += CalcLightIntensity(VolcanoLightPosition, tnorm, VolcanoKd, VolcanoLd, eyeCoords, 1.0, 0.0025, 0.001);
-
-    // Calculate sea light contribution
-    LightIntensity += CalcLightIntensity(SeaLightPosition1, tnorm, SeaKd, SeaLd, eyeCoords, 1.0, 0.005, 0.001);
-    LightIntensity += CalcLightIntensity(SeaLightPosition2, tnorm, SeaKd, SeaLd, eyeCoords, 1.0, 0.005, 0.001);
-    LightIntensity += CalcLightIntensity(SeaLightPosition3, tnorm, SeaKd, SeaLd, eyeCoords, 1.0, 0.005, 0.001);
-    LightIntensity += CalcLightIntensity(SeaLightPosition4, tnorm, SeaKd, SeaLd, eyeCoords, 1.0, 0.005, 0.001);
-
+    EyeCoords = ModelViewMatrix * vec4(vertex_position, 1.0);
 
     // Convert position to clip coordinates and pass along
     gl_Position = proj * view * model * vec4(vertex_position, 1.0);

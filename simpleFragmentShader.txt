@@ -1,6 +1,42 @@
 #version 330
 
-in vec3 LightIntensity;
+in vec4 EyeCoords;
+in vec3 Normal;
+
+vec4 VolcanoLightPosition = vec4(0.0, 2.0, 0.0, 1.0); // Volcano light position in world coordinates.
+vec3 VolcanoKd = vec3(1.0, 0.0, 0.0); // Red diffuse reflectance for volcano
+vec3 VolcanoLd = vec3(1.0, 1.0, 1.0); // White light intensity for volcano
+
+vec4 SeaLightPosition1 = vec4(-25.0, -10.0, -25.0, 1.0); // Sea light position in world coordinates.
+vec4 SeaLightPosition2 = vec4(25.0, -10.0, 25.0, 1.0); // Sea light position in world coordinates.
+vec4 SeaLightPosition3 = vec4(-25.0, -10.0, 25.0, 1.0); // Sea light position in world coordinates.
+vec4 SeaLightPosition4 = vec4(25.0, -10.0, -25.0, 1.0); // Sea light position in world coordinates.
+
+vec3 SeaKd = vec3(0.004f, 0.361f, 0.588f); // diffuse reflectance for sea light
+vec3 SeaLd = vec3(1.0, 1.0, 1.0); // White light intensity for sea light
+
+vec3 CalcLightIntensity(vec4 LightPosition, vec3 normal, vec3 Kd, vec3 Ld, vec4 eyeCoords, float constant, float linear, float quadratic) {
+    // Calculate the distance from the light to the fragment in view space
+    float distance = length(LightPosition.xyz - eyeCoords.xyz);
+    float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
+    
+    // Calculate the direction from the fragment to the light source
+    vec3 s = normalize(vec3(LightPosition - eyeCoords));
+    
+    // Diffuse lighting calculation
+    return Ld * Kd * max(dot(s, normal), 0.0) * attenuation;
+}
+
 void main(){
+
+    // Calculate volcano light contribution
+    vec3 LightIntensity = CalcLightIntensity(VolcanoLightPosition, Normal, VolcanoKd, VolcanoLd, EyeCoords, 1.0, 0.001, 0.0001);
+
+    // Calculate sea light contribution
+    LightIntensity += CalcLightIntensity(SeaLightPosition1, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+    LightIntensity += CalcLightIntensity(SeaLightPosition2, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+    LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+    LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+
 	gl_FragColor = vec4 (LightIntensity, 1.0);
 }

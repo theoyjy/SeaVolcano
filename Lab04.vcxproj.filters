@@ -26,6 +26,9 @@
     <ClInclude Include="maths_funcs.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="CameraControl.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="simpleVertexShader.txt">
@@ -34,8 +37,9 @@
     <Text Include="simpleFragmentShader.txt">
       <Filter>Source Files</Filter>
     </Text>
-    <Text Include="NormalVertexShader.txt" />
-    <Text Include="NormalFragmentShader.txt" />
+    <Text Include="animationVertexShader.txt">
+      <Filter>Source Files</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="monkeyhead_smooth.dae">

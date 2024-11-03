@@ -1,0 +1,38 @@
+#version 440 core
+layout (location = 0) in vec3 position;
+layout (location = 1)in vec3 normal;
+layout (location = 2)in ivec4 boneIDs;
+layout (location = 3)in vec4 weights;
+
+out vec4 EyeCoords;
+out vec3 Normal;
+
+uniform mat4 boneTransforms[100];
+uniform mat4 view;
+uniform mat4 proj;
+uniform mat4 model;
+
+void main()
+{
+    mat4 boneTransform = weights.x * boneTransforms[int(boneIDs.x)] +
+                         weights.y * boneTransforms[int(boneIDs.y)] +
+                         weights.z * boneTransforms[int(boneIDs.z)] +
+                         weights.w * boneTransforms[int(boneIDs.w)];
+
+    // Apply bone transformation to the vertex position and normal
+    vec4 animatedPosition = boneTransform * vec4(position, 1.0);
+    vec3 animatedNormal = mat3(boneTransform) * normal;
+    // This is a simple translation along the X-axis by +5 units
+
+    // Compute final position and normal after model and view transformations
+    mat4 modelViewMatrix = view * model;
+    vec4 transformedPosition = modelViewMatrix * animatedPosition;
+    EyeCoords = transformedPosition;
+
+    // Apply normal transformation
+    mat3 normalMatrix = transpose(inverse(mat3(modelViewMatrix)));
+    Normal = normalize(normalMatrix * animatedNormal);
+
+    // Calculate final clip space position
+    gl_Position = proj * transformedPosition;
+}
