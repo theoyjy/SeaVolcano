@@ -1,4 +1,4 @@
-// Windows includes(For Time, IO, etc.)
+// Windows includes (For Time, IO, etc.)
 #include <windows.h>
 #include <mmsystem.h>
 #include <iostream>
@@ -38,12 +38,10 @@ MESH TO LOAD
 // this mesh is a dae file format but you should be able to use any other format too, obj is typically what is used
 // put the mesh in your project directory, or provide a filepath for it here
 #define VOLCANO_MESH "Assets/volcano.fbx"
-#define FISH1_MESH "Assets/volcano.fbx"
+#define FISH1_MESH "Assets/sardine.fbx"
 
-#define TERRIAN 0
-#define FISH1 1
 
-/*----------------------------------------------------------------------------
+/*-----------------------------------------------------------------------s-----
 ----------------------------------------------------------------------------*/
 using namespace std;
 #pragma region SimpleTypes
@@ -59,7 +57,7 @@ struct KeyFrame {
 };
 
 struct BoneNode {
-	int boneID;                   // 骨骼ID（在mBoneNames中的索引）
+	int boneID = 0;                   // 骨骼ID（在mBoneNames中的索引）
 	glm::mat4 currentTransform;   // 当前骨骼变换矩阵
 	glm::mat4 offsetMatrix;
 	string name;
@@ -67,26 +65,30 @@ struct BoneNode {
 	std::vector<BoneNode*> children; // 子骨骼列表
 };
 
+// vertex of an animated model
+struct Vertex {
+	glm::vec3 position;
+	glm::vec3 normal;
+	glm::vec4 boneIds = glm::vec4(0);
+	glm::vec4 boneWeights = glm::vec4(0.0f);
+};
+
 typedef struct ModelData
 {
 	size_t mPointCount = 0;
-	size_t mPointEffectedByBone = 0;
 	size_t mBoneCount = 0;
 	size_t mAnimationCount = 0;
 	float mTicksPerSecond = 0.0f;
 	float mDuration = 0.0f;
-	vector<glm::vec3> mVertices;
-	vector<glm::vec3> mNormals;
-	vector<vec2> mTextureCoords;
-	vector<float> normalLines;
 
-	vector<string> mBoneNames;          // 骨骼名称
-	vector<glm::ivec4> mBoneIDs;             // 每个顶点受影响的骨骼ID (最多4个)
-	vector<glm::vec4> mWeights;              // 每个顶点受影响骨骼的权重 (最多4个)
+	vector<Vertex> mVertices;
+	vector<string> mBoneNames;
+
 	vector<vector<KeyFrame>> mBoneKeyframes;      // 每个骨骼的关键帧
 	vector<glm::mat4> currentBoneTransformation;    // 每个骨骼的动画矩阵
 	std::vector<BoneNode*> boneNodes;          // hierarchy of bones
-	glm::mat4 globalInverseTransform;          // root bone
+
+	glm::mat4 globalInverseTransform; // 全局反向变换矩阵
 
 	int GetBoneIDByName(const std::string& name)
 	{
@@ -108,19 +110,20 @@ typedef struct ModelData
 } ModelData;
 #pragma endregion SimpleTypes
 
-
+#define TERRIAN 1
+#define FISH1 0
 
 auto startTime = std::chrono::high_resolution_clock::now();
 
 using namespace std;
-GLuint terrianShaderProgramID, animationShaderProgramID;
+GLuint terrianShaderProgramID, animationShaderProgramID, boneShaderProgramID;
 
 
 ModelData volcano_terrian_mesh;
 ModelData fish1_mesh;
 unsigned int mesh_vao = 0;
-int width = 1440;
-int height = 720;
+int width = 800;
+int height = 600;
 
 
 GLfloat rotate_y = 0.0f;
@@ -134,15 +137,22 @@ void processNodeHierarchy(const aiNode* node, BoneNode* parentBone, ModelData& m
 	// Check if this node is a bone by looking for its name in the model's bone list
 	std::string nodeName(node->mName.C_Str());
 	int boneID = modelData.GetBoneIDByName(nodeName);
+
 	BoneNode* currentBone = nullptr;
-	if(boneID < modelData.mBoneNames.size())
-	{
-		currentBone = modelData.boneNodes[boneID];
-	}
- 
-	// If there's a parent, add this bone to the parent's children list
-	if (parentBone != nullptr) {
-		parentBone->children.push_back(currentBone);
+	if (boneID != modelData.mBoneNames.size()) {
+		// This is a bone, create a BoneNode for it
+		currentBone = new BoneNode();
+		currentBone->boneID = boneID;
+		currentBone->parent = parentBone;
+		currentBone->name = nodeName;
+		currentBone->offsetMatrix = glm::transpose(glm::make_mat4(&node->mTransformation.a1));
+		// Add this bone to the modelData bone hierarchy list
+		modelData.boneNodes[boneID] = currentBone;
+
+		// If there's a parent, add this bone to the parent's children list
+		if (parentBone != nullptr) {
+			parentBone->children.push_back(currentBone);
+		}
 	}
 
 	// Process child nodes recursively
@@ -153,8 +163,10 @@ void processNodeHierarchy(const aiNode* node, BoneNode* parentBone, ModelData& m
 
 void buildBoneHierarchy(const aiScene* scene, ModelData& modelData) {
 	const aiNode* rootNode = scene->mRootNode;
+	modelData.boneNodes.resize(modelData.mBoneCount);
 	processNodeHierarchy(rootNode, nullptr, modelData);
 }
+
 
 ModelData load_mesh(const char* file_name, bool with_anime) {
 	ModelData modelData;
@@ -165,11 +177,11 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 	/* are offset from the origin. This is pre-transform them so      */
 	/* they're in the right position.                                 */
 
-	unsigned int pFlags = with_anime ? (aiProcess_FlipUVs | aiProcess_LimitBoneWeights)
+	unsigned int pFlags = with_anime ? (aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices | aiProcess_LimitBoneWeights)
 		: (aiProcess_PreTransformVertices | aiProcess_GlobalScale);
 
 
-	const aiScene* scene = aiImportFile(file_name, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals);
+	const aiScene* scene = aiImportFile(file_name, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | aiProcess_LimitBoneWeights);
 
 	if (!scene) {
 		fprintf(stderr, "ERROR: reading mesh %s\n", filesystem::path(file_name).c_str());
@@ -181,6 +193,10 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 	printf("  %i textures\n", scene->mNumTextures);
 	printf("  %i animation\n", scene->mAnimations);
 
+
+	modelData.globalInverseTransform = glm::inverse(glm::transpose(
+		glm::make_mat4(&scene->mRootNode->mTransformation.a1)));;
+
 	for (unsigned int m_i = 0; m_i < scene->mNumMeshes; m_i++) {
 		const aiMesh* mesh = scene->mMeshes[m_i];
 		printf("    %i vertices in mesh\n", mesh->mNumVertices);
@@ -188,56 +204,28 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 
 		modelData.mPointCount += mesh->mNumVertices;
 		for (unsigned int v_i = 0; v_i < mesh->mNumVertices; v_i++) {
-			if (mesh->HasPositions()) {
-				const aiVector3D* vp = &(mesh->mVertices[v_i]);
-				modelData.mVertices.push_back(glm::vec3(vp->x, vp->y, vp->z));
-			}
-			if (mesh->HasNormals()) {
-				const aiVector3D* vn = &(mesh->mNormals[v_i]);
-				modelData.mNormals.push_back(glm::vec3(vn->x, vn->y, vn->z));
-			}
-			if (mesh->HasTextureCoords(0)) {
-				const aiVector3D* vt = &(mesh->mTextureCoords[0][v_i]);
-				modelData.mTextureCoords.push_back(vec2(vt->x, vt->y));
-			}
-			if (mesh->HasTangentsAndBitangents()) {
-				/* You can extract tangents and bitangents here              */
-				/* Note that you might need to make Assimp generate this     */
-				/* data for you. Take a look at the flags that aiImportFile  */
-				/* can take.                                                 */
-			}
-
+			Vertex vertex;
+			vertex.position = glm::vec3(mesh->mVertices[v_i].x, mesh->mVertices[v_i].y, mesh->mVertices[v_i].z);
+			vertex.normal = glm::vec3(mesh->mNormals[v_i].x, mesh->mNormals[v_i].y, mesh->mNormals[v_i].z);
+			//vertex.uv = glm::vec2(mesh->mTextureCoords[0][v_i].x, mesh->mTextureCoords[0][v_i].y);
+			vertex.boneIds = glm::ivec4(0);
+			vertex.boneWeights = glm::vec4(0.0f);
+			modelData.mVertices.push_back(vertex);
 		}
 
 		if (mesh->HasBones())
 		{
-			modelData.mPointEffectedByBone += mesh->mNumVertices;
-			modelData.mBoneIDs.resize(modelData.mPointEffectedByBone, glm::vec4(0.0f));
-			modelData.mWeights.resize(modelData.mPointEffectedByBone, glm::vec4(0.0f));
 			modelData.mBoneCount += mesh->mNumBones;
-			modelData.boneNodes.resize(modelData.mBoneCount, nullptr);
 
-			glm::mat4 GlobalInverseTransform = glm::inverse(glm::transpose(glm::make_mat4(&scene->mRootNode->mTransformation.a1)));
-			modelData.globalInverseTransform = GlobalInverseTransform;
-			cout << "Global Inverse Transform:\n" << glm::to_string(GlobalInverseTransform) << std::endl;
-			// animation
+			// bones
 			for (unsigned int m_b = 0; m_b < mesh->mNumBones; m_b++)
 			{
-				// to do: add armature name in bones' name
 				aiBone* bone = mesh->mBones[m_b];
 				int boneID = modelData.GetBoneIDByName(bone->mName.C_Str());
 				if (boneID == modelData.mBoneNames.size())
 				{
 					modelData.mBoneNames.push_back(bone->mName.C_Str());
-					modelData.boneNodes[boneID] = new BoneNode();
 				}
-				modelData.boneNodes[boneID]->boneID = boneID;
-				modelData.boneNodes[boneID]->parent = NULL;
-				modelData.boneNodes[boneID]->name = bone->mName.C_Str();
-				modelData.boneNodes[boneID]->offsetMatrix = glm::transpose(glm::make_mat4(&bone->mOffsetMatrix.a1));
-	
-				std::cout << "Bone Name: " << modelData.boneNodes[boneID]->name << std::endl;
-				std::cout << "Offset Matrix:\n" << glm::to_string(modelData.boneNodes[boneID]->offsetMatrix) << std::endl;
 
 				for (unsigned int k = 0; k < bone->mNumWeights; k++)
 				{
@@ -247,15 +235,29 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 
 					for (int i = 0; i < 4; i++)
 					{
-						if (modelData.mBoneIDs[vertexID][i] == 0)
+						if (modelData.mVertices[vertexID].boneWeights[i] == 0.0f)
 						{
-							modelData.mBoneIDs[vertexID][i] = boneID;
-							modelData.mWeights[vertexID][i] = boneWeight;
+							modelData.mVertices[vertexID].boneIds[i] = boneID;
+							modelData.mVertices[vertexID].boneWeights[i] = boneWeight;
 							break;
 						}
 					}
 				}
 
+			}
+
+			//normalize weights to make all weights sum 1
+			for (int i = 0; i < modelData.mPointCount; i++) {
+				auto& boneWeights = modelData.mVertices[i].boneWeights;
+				float totalWeight = boneWeights.x + boneWeights.y + boneWeights.z + boneWeights.w;
+				if (totalWeight > 0.0f) {
+					boneWeights = glm::vec4(
+						boneWeights.x / totalWeight,
+						boneWeights.y / totalWeight,
+						boneWeights.z / totalWeight,
+						boneWeights.w / totalWeight
+					);
+				}
 			}
 
 			buildBoneHierarchy(scene, modelData);
@@ -266,13 +268,15 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 		aiAnimation* animation = scene->mAnimations[0];
 
 		// initialize bone keyframes and animations
-		modelData.mAnimationCount += animation->mNumChannels;
-		modelData.mBoneKeyframes.resize(modelData.mAnimationCount);
-		modelData.currentBoneTransformation.resize(modelData.mAnimationCount);
+		modelData.mBoneKeyframes.resize(animation->mNumChannels);
+		modelData.currentBoneTransformation.resize(animation->mNumChannels);
 
 		// record animation data
+		modelData.mAnimationCount = animation->mNumChannels;
 		modelData.mTicksPerSecond = animation->mTicksPerSecond;
-		modelData.mDuration = animation->mDuration;
+		modelData.mDuration = animation->mDuration; // in ticks
+
+		cout << "total time: " << modelData.mDuration / modelData.mTicksPerSecond << "s\n";
 
 		// record keyframes
 		for (unsigned int i = 0; i < animation->mNumChannels; i++) {
@@ -303,13 +307,6 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 				modelData.mBoneKeyframes[boneID].push_back(keyframe);
 			}
 		}
-
-		for (auto& weights : fish1_mesh.mWeights) {
-			float totalWeight = weights.x + weights.y + weights.z + weights.w;
-			if (totalWeight > 0.0f) {
-				weights /= totalWeight; // Normalize weights
-			}
-		}
 	}
 
 	aiReleaseImport(scene);
@@ -317,6 +314,222 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 	return modelData;
 }
 #pragma endregion MESH LOADING
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+
+// structure to hold bone tree (skeleton)
+struct Bone {
+	int id = 0; // position of the bone in final upload array
+	std::string name = "";
+	glm::mat4 offset = glm::mat4(1.0f);
+	std::vector<Bone> children = {};
+};
+
+// sturction representing an animation track
+struct BoneTransformTrack {
+	std::vector<float> positionTimestamps = {};
+	std::vector<float> rotationTimestamps = {};
+	std::vector<float> scaleTimestamps = {};
+
+	std::vector<glm::vec3> positions = {};
+	std::vector<glm::quat> rotations = {};
+	std::vector<glm::vec3> scales = {};
+};
+
+// structure containing animation information
+struct Animation {
+	float duration = 0.0f;
+	float ticksPerSecond = 1.0f;
+	std::unordered_map<std::string, BoneTransformTrack> boneTransforms = {};
+};
+
+
+inline glm::mat4 assimpToGlmMatrix(aiMatrix4x4 mat) {
+	glm::mat4 m;
+	for (int y = 0; y < 4; y++)
+	{
+		for (int x = 0; x < 4; x++)
+		{
+			m[x][y] = mat[y][x];
+		}
+	}
+	return m;
+}
+inline glm::vec3 assimpToGlmVec3(aiVector3D vec) {
+	return glm::vec3(vec.x, vec.y, vec.z);
+}
+
+inline glm::quat assimpToGlmQuat(aiQuaternion quat) {
+	glm::quat q;
+	q.x = quat.x;
+	q.y = quat.y;
+	q.z = quat.z;
+	q.w = quat.w;
+
+	return q;
+}
+
+
+// a recursive function to read all bones and form skeleton
+bool readSkeleton(Bone& boneOutput, aiNode* node, std::unordered_map<std::string, std::pair<int, glm::mat4>>& boneInfoTable) {
+
+	if (boneInfoTable.find(node->mName.C_Str()) != boneInfoTable.end()) { // if node is actually a bone
+		boneOutput.name = node->mName.C_Str();
+		boneOutput.id = boneInfoTable[boneOutput.name].first;
+		boneOutput.offset = boneInfoTable[boneOutput.name].second;
+
+		for (int i = 0; i < node->mNumChildren; i++) {
+			Bone child;
+			readSkeleton(child, node->mChildren[i], boneInfoTable);
+			boneOutput.children.push_back(child);
+		}
+		return true;
+	}
+	else { // find bones in children
+		for (int i = 0; i < node->mNumChildren; i++) {
+			if (readSkeleton(boneOutput, node->mChildren[i], boneInfoTable)) {
+				return true;
+			}
+
+		}
+	}
+	return false;
+}
+
+void loadModel(const aiScene* scene, aiMesh* mesh, std::vector<Vertex>& verticesOutput, std::vector<size_t>& indicesOutput,
+	Bone& skeletonOutput, size_t& nBoneCount) {
+
+	verticesOutput = {};
+	indicesOutput = {};
+	//load position, normal, uv
+	for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
+		//process position 
+		Vertex vertex;
+		glm::vec3 vector;
+		vector.x = mesh->mVertices[i].x;
+		vector.y = mesh->mVertices[i].y;
+		vector.z = mesh->mVertices[i].z;
+		vertex.position = vector;
+		//process normal
+		vector.x = mesh->mNormals[i].x;
+		vector.y = mesh->mNormals[i].y;
+		vector.z = mesh->mNormals[i].z;
+		vertex.normal = vector;
+
+		vertex.boneIds = glm::ivec4(0);
+		vertex.boneWeights = glm::vec4(0.0f);
+
+		verticesOutput.push_back(vertex);
+	}
+
+	//load boneData to vertices
+	std::unordered_map<std::string, std::pair<int, glm::mat4>> boneInfo = {};
+	std::vector<size_t> boneCounts;
+	boneCounts.resize(verticesOutput.size(), 0);
+	nBoneCount = mesh->mNumBones;
+
+	//loop through each bone
+	for (size_t i = 0; i < nBoneCount; i++) {
+		aiBone* bone = mesh->mBones[i];
+		glm::mat4 m = assimpToGlmMatrix(bone->mOffsetMatrix);
+		boneInfo[bone->mName.C_Str()] = { i, m };
+
+		//loop through each vertex that have that bone
+		for (int j = 0; j < bone->mNumWeights; j++) {
+			size_t id = bone->mWeights[j].mVertexId;
+			float weight = bone->mWeights[j].mWeight;
+			boneCounts[id]++;
+			switch (boneCounts[id]) {
+			case 1:
+				verticesOutput[id].boneIds.x = i;
+				verticesOutput[id].boneWeights.x = weight;
+				break;
+			case 2:
+				verticesOutput[id].boneIds.y = i;
+				verticesOutput[id].boneWeights.y = weight;
+				break;
+			case 3:
+				verticesOutput[id].boneIds.z = i;
+				verticesOutput[id].boneWeights.z = weight;
+				break;
+			case 4:
+				verticesOutput[id].boneIds.w = i;
+				verticesOutput[id].boneWeights.w = weight;
+				break;
+			default:
+				//std::cout << "err: unable to allocate bone to vertex" << std::endl;
+				break;
+
+			}
+		}
+	}
+
+
+
+	//normalize weights to make all weights sum 1
+	for (int i = 0; i < verticesOutput.size(); i++) {
+		glm::vec4& boneWeights = verticesOutput[i].boneWeights;
+		float totalWeight = boneWeights.x + boneWeights.y + boneWeights.z + boneWeights.w;
+		if (totalWeight > 0.0f) {
+			verticesOutput[i].boneWeights = glm::vec4(
+				boneWeights.x / totalWeight,
+				boneWeights.y / totalWeight,
+				boneWeights.z / totalWeight,
+				boneWeights.w / totalWeight
+			);
+		}
+	}
+
+
+	//load indices
+	for (int i = 0; i < mesh->mNumFaces; i++) {
+		aiFace& face = mesh->mFaces[i];
+		for (unsigned int j = 0; j < face.mNumIndices; j++)
+			indicesOutput.push_back(face.mIndices[j]);
+	}
+
+	// create bone hirerchy
+	readSkeleton(skeletonOutput, scene->mRootNode, boneInfo);
+}
+
+void loadAnimation(const aiScene* scene, Animation& animation) {
+	//loading  first Animation
+	aiAnimation* anim = scene->mAnimations[0];
+
+	if (anim->mTicksPerSecond != 0.0f)
+		animation.ticksPerSecond = anim->mTicksPerSecond;
+	else
+		animation.ticksPerSecond = 1;
+
+
+	animation.duration = anim->mDuration * anim->mTicksPerSecond;
+	animation.boneTransforms = {};
+
+	//load positions rotations and scales for each bone
+	// each channel represents each bone
+	for (int i = 0; i < anim->mNumChannels; i++) {
+		aiNodeAnim* channel = anim->mChannels[i];
+		BoneTransformTrack track;
+		for (int j = 0; j < channel->mNumPositionKeys; j++) {
+			track.positionTimestamps.push_back(channel->mPositionKeys[j].mTime);
+			track.positions.push_back(assimpToGlmVec3(channel->mPositionKeys[j].mValue));
+		}
+		for (int j = 0; j < channel->mNumRotationKeys; j++) {
+			track.rotationTimestamps.push_back(channel->mRotationKeys[j].mTime);
+			track.rotations.push_back(assimpToGlmQuat(channel->mRotationKeys[j].mValue));
+
+		}
+		for (int j = 0; j < channel->mNumScalingKeys; j++) {
+			track.scaleTimestamps.push_back(channel->mScalingKeys[j].mTime);
+			track.scales.push_back(assimpToGlmVec3(channel->mScalingKeys[j].mValue));
+
+		}
+		animation.boneTransforms[channel->mNodeName.C_Str()] = track;
+	}
+}
+
 
 // Shader Functions- click on + to expand
 #pragma region SHADER_FUNCTIONS
@@ -442,6 +655,18 @@ GLuint CompileShaders()
 	AddShader(animationShaderProgramID, "animationVertexShader.txt", GL_VERTEX_SHADER);
 	AddShader(animationShaderProgramID, "simpleFragmentShader.txt", GL_FRAGMENT_SHADER);
 	linkShader(animationShaderProgramID);
+
+	boneShaderProgramID = glCreateProgram();
+	if (boneShaderProgramID == 0) {
+		std::cerr << "Error creating shader program..." << std::endl;
+		std::cerr << "Press enter/return to exit..." << std::endl;
+		std::cin.get();
+		exit(1);
+	}
+	AddShader(boneShaderProgramID, "boneVertexShader.txt", GL_VERTEX_SHADER);
+	AddShader(boneShaderProgramID, "boneFragmentShader.txt", GL_FRAGMENT_SHADER);
+	linkShader(boneShaderProgramID);
+
 #endif
 	return 1;
 }
@@ -463,91 +688,63 @@ void generateObjectBufferMesh() {
 	{
 		volcano_terrian_mesh = load_mesh(VOLCANO_MESH, false);
 
-		glGenVertexArrays(1, &mesh_vao);
-		glBindVertexArray(mesh_vao);
-
-		GLuint loc1 = glGetAttribLocation(terrianShaderProgramID, "vertex_position");
-		GLuint loc2 = glGetAttribLocation(terrianShaderProgramID, "vertex_normal");
-
-		//GLuint loc3 = glGetAttribLocation(terrianShaderProgramID, "vertex_texture");
-		GLuint vp_vbo = 0, vn_vbo = 0;
+		GLuint vbo;
 
 		glGenVertexArrays(1, &mesh_vao);
+		glGenBuffers(1, &vbo);
+
 		glBindVertexArray(mesh_vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-		// Vertex positions
-		glGenBuffers(1, &vp_vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vp_vbo);
-		glBufferData(GL_ARRAY_BUFFER, volcano_terrian_mesh.mPointCount * sizeof(glm::vec3), volcano_terrian_mesh.mVertices.data(), GL_STATIC_DRAW);
-		glEnableVertexAttribArray(loc1);
-		glVertexAttribPointer(loc1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
-
-		// Vertex normals
-		glGenBuffers(1, &vn_vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vn_vbo);
-		glBufferData(GL_ARRAY_BUFFER, volcano_terrian_mesh.mPointCount * sizeof(glm::vec3), volcano_terrian_mesh.mNormals.data(), GL_STATIC_DRAW);
-		glEnableVertexAttribArray(loc2);
-		glVertexAttribPointer(loc2, 3, GL_FLOAT, GL_FALSE, 0, NULL);
-
-		// Unbind VAO and VBO
-		glBindVertexArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		//	This is for texture coordinates which you don't currently need, so I have commented it out
-		//	unsigned int vt_vbo = 0;
-		//	glGenBuffers (1, &vt_vbo);
-		//	glBindBuffer (GL_ARRAY_BUFFER, vt_vbo);
-		//	glBufferData (GL_ARRAY_BUFFER, monkey_head_data.mTextureCoords * sizeof (vec2), &monkey_head_data.mTextureCoords[0], GL_STATIC_DRAW);
-
+		glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * volcano_terrian_mesh.mPointCount, &volcano_terrian_mesh.mVertices[0], GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, position));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, normal));
 	}
 #endif
 
 #if FISH1
 	{ // replace animationVertexShader.txt with simpleVertexShader.txt
 		fish1_mesh = load_mesh(FISH1_MESH, true);
-		GLuint loc1 = glGetAttribLocation(animationShaderProgramID, "position");
-		GLuint loc2 = glGetAttribLocation(animationShaderProgramID, "normal");
-		GLuint loc3 = glGetAttribLocation(animationShaderProgramID, "boneIDs");
-		GLuint loc4 = glGetAttribLocation(animationShaderProgramID, "weights");
-		if (loc1 == -1 || loc2 == -1 || loc3 == -1 || loc4 == -1)
-		{
-			std::cerr << "position, normal, boneIDs, or weights attribute not found" << std::endl;
-		}
+		GLuint vbo;
 
 		glGenVertexArrays(1, &mesh_vao);
+		glGenBuffers(1, &vbo);
+
 		glBindVertexArray(mesh_vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-		unsigned int vp_vbo = 0;
-		glGenBuffers(1, &vp_vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vp_vbo);
-		glBufferData(GL_ARRAY_BUFFER, fish1_mesh.mPointCount * sizeof(glm::vec3), fish1_mesh.mVertices.data(), GL_STATIC_DRAW);
-		unsigned int vn_vbo = 0;
-		glGenBuffers(1, &vn_vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vn_vbo);
-		glBufferData(GL_ARRAY_BUFFER, fish1_mesh.mPointCount * sizeof(glm::vec3), fish1_mesh.mNormals.data(), GL_STATIC_DRAW);
-		unsigned int vb_vbo = 0;
-		glGenBuffers(1, &vb_vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vb_vbo);
-		glBufferData(GL_ARRAY_BUFFER, fish1_mesh.mPointEffectedByBone * sizeof(glm::ivec4), fish1_mesh.mBoneIDs.data(), GL_STATIC_DRAW);
-		unsigned int vw_vbo = 0;
-		glGenBuffers(1, &vw_vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vw_vbo);
-		glBufferData(GL_ARRAY_BUFFER, fish1_mesh.mPointEffectedByBone * sizeof(glm::vec4), fish1_mesh.mWeights.data(), GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * fish1_mesh.mPointCount, &fish1_mesh.mVertices[0], GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, position));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, normal));
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, boneIds));
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, boneWeights));
 
-		glEnableVertexAttribArray(loc1);
-		glBindBuffer(GL_ARRAY_BUFFER, vp_vbo);
-		glVertexAttribPointer(loc1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 
-		glEnableVertexAttribArray(loc2);
-		glBindBuffer(GL_ARRAY_BUFFER, vn_vbo);
-		glVertexAttribPointer(loc2, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 
-		glEnableVertexAttribArray(loc3);
-		glBindBuffer(GL_ARRAY_BUFFER, vb_vbo);
-		glVertexAttribIPointer(loc3, 4, GL_INT, 0, NULL);
+		const aiScene* scene = aiImportFile(FISH1_MESH, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals);
+		aiMesh* mesh = scene->mMeshes[0];
 
-		glEnableVertexAttribArray(loc4);
-		glBindBuffer(GL_ARRAY_BUFFER, vw_vbo);
-		glVertexAttribPointer(loc4, 4, GL_FLOAT, GL_FALSE, 0, NULL);
+		std::vector<Vertex> vertices = {};
+		std::vector<size_t> indices = {};
+		size_t boneCount = 0;
+		Animation animation;
+		size_t vao = 0;
+		Bone skeleton;
+		size_t diffuseTexture;
+
+		//as the name suggests just inverse the global transform
+		glm::mat4 globalInverseTransform = assimpToGlmMatrix(scene->mRootNode->mTransformation);
+		globalInverseTransform = glm::inverse(globalInverseTransform);
+
+
+		loadModel(scene, mesh, vertices, indices, skeleton, boneCount);
+		loadAnimation(scene, animation);
 
 	}
 #endif
@@ -603,26 +800,18 @@ void display() {
 #endif // TERRIAN
 
 #if FISH1
-
 	glUseProgram(animationShaderProgramID);
 	glBindVertexArray(mesh_vao);
 
-	//Declare your uniform variables that will be used in your shader
 	int matrix_location = glGetUniformLocation(animationShaderProgramID, "model");
 	int view_mat_location = glGetUniformLocation(animationShaderProgramID, "view");
 	int proj_mat_location = glGetUniformLocation(animationShaderProgramID, "proj");
 	GLuint boneTransformLoc = glGetUniformLocation(animationShaderProgramID, "boneTransforms");
-	if (matrix_location == -1 || view_mat_location == -1 || proj_mat_location == -1 || boneTransformLoc == -1)
-	{
-		std::cerr << "uniform not found" << std::endl;
-	}
-	// Root of the Hierarchy
+
 	mat4 persp_proj = perspective(45.0f, (float)width / (float)height, 0.1f, 1000.0f);
 	glm::mat4 model(1.0f);
-
-
-	// Update the view matrix
 	glm::vec3 forward(0.0);
+
 	forward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
 	forward.y = sin(glm::radians(pitch));
 	forward.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
@@ -630,14 +819,11 @@ void display() {
 	glm::vec3 cameraTarget = cameraPosition + forward;
 	glm::mat4 view = glm::lookAt(cameraPosition, cameraTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 
-
-	// update uniforms & draw
 	glUniformMatrix4fv(proj_mat_location, 1, GL_FALSE, persp_proj.m);
 	glUniformMatrix4fv(view_mat_location, 1, GL_FALSE, glm::value_ptr(view));
 	glUniformMatrix4fv(matrix_location, 1, GL_FALSE, glm::value_ptr(model));
-	glUniformMatrix4fv(boneTransformLoc, std::min(100,
-		static_cast<int>(fish1_mesh.currentBoneTransformation.size())), GL_FALSE,
-		glm::value_ptr(fish1_mesh.currentBoneTransformation[0]));
+	glUniformMatrix4fv(boneTransformLoc, std::min(100, static_cast<int>(fish1_mesh.currentBoneTransformation.size())),
+		GL_FALSE, glm::value_ptr(fish1_mesh.currentBoneTransformation[0]));
 	glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(fish1_mesh.mPointCount));
 #endif
 
@@ -657,6 +843,7 @@ std::pair<int, float> getTimeFraction(const std::vector<KeyFrame>& keyframes, fl
 			keyframes[i].scaleTimestamp;
 		if (animationTime < end) {
 			float deltaTime = end - start;
+			if (deltaTime <= 0.0f) deltaTime = 1.0f;  // Avoid division by zero
 			float factor = (animationTime - start) / deltaTime;
 			return { i, factor };
 		}
@@ -672,6 +859,8 @@ void updateBoneTransforms(ModelData& modelData, float timeInSeconds) {
 	float ticksPerSecond = (modelData.mTicksPerSecond != 0) ? modelData.mTicksPerSecond : 25.0f;
 	float timeInTicks = timeInSeconds * ticksPerSecond;
 	float animationTime = fmod(timeInTicks, modelData.mDuration);
+
+	//cout << "Frame: " << animationTime << "\n";
 
 	function<void(BoneNode*, const glm::mat4&)> updateBone = [&](BoneNode* bone, const glm::mat4& parentTransform) {
 		if (!bone) return;
@@ -709,67 +898,126 @@ void updateBoneTransforms(ModelData& modelData, float timeInSeconds) {
 			glm::scale(glm::mat4(1.0f), interpolatedScale);
 
 		glm::mat4 globalTransform = parentTransform * localTransform;
-		glm::mat4 correction = glm::mat4(1.0f);
-		correction[1][1] = 0; correction[1][2] = 1;
-		correction[2][1] = 1; correction[2][2] = 0;  // Swap Y and Z axes
+		globalTransform = modelData.globalInverseTransform * globalTransform * bone->offsetMatrix;
+		bone->currentTransform = globalTransform;
+		modelData.currentBoneTransformation[boneID] = globalTransform;
 
-		//globalTransform = correction * globalTransform;
-		//if (bone->name == "Bone01")
-		//{
-
-		//	std::cout << "Global Transform (before GlobalInverse): " << glm::to_string(globalTransform) << std::endl;
-		//	std::cout << "local Transform: " << glm::to_string(localTransform) << std::endl;
-		//}
-		modelData.currentBoneTransformation[boneID] = modelData.globalInverseTransform * globalTransform * bone->offsetMatrix;
-		//if (bone->name == "Bone01")
-		//std::cout << "Final Transform: " << glm::to_string(modelData.currentBoneTransformation[boneID]) << std::endl;
 		// Update child bones
 		for (BoneNode* child : bone->children) {
 			updateBone(child, globalTransform);
 		}
-
-		//if (bone->name == "Bone01")
-		//{
-		//	std::cout << timeInSeconds << "  " << globalTransform[3][0] << " "
-		//		<< globalTransform[3][1] << " " << globalTransform[3][2] << std::endl;
-		//	std::cout << glm::to_string(bone->offsetMatrix) << std::endl;
-
-		//}
-	};
+		if (modelData.mBoneNames[boneID] == "X")
+		{
+			std::cout << "Bone : " << modelData.mBoneNames[boneID] << "\n";
+			std::cout << "  Global Position: " << glm::to_string(glm::vec3(globalTransform[3])) << "\n";  // Extract translation part
+			glm::quat globalRotation = glm::quat_cast(globalTransform);
+			std::cout << "  Global Rotation (Quaternion): " << glm::to_string(globalRotation) << "\n";
+			std::cout << "  Scale: " << glm::to_string(interpolatedScale) << "\n";  // Scale directly
+			std::cout << "\n";
+		}
+		};
 
 	for (BoneNode* bone : modelData.boneNodes) {
 		if (bone && !bone->parent) {
 			updateBone(bone, glm::mat4(1.0f));
 		}
 	}
+}
 
+void setMat4(GLuint shaderProgram, const std::string& name, const glm::mat4& mat) {
+	GLuint location = glGetUniformLocation(shaderProgram, name.c_str());
+	glUniformMatrix4fv(location, 1, GL_FALSE, &mat[0][0]);
 }
 
 
-bool show = false;
-int frame = 1;
+// Function to draw bones recursively in your current scene
+void drawBoneRecursive(BoneNode* bone, glm::mat4 parentTransform, GLuint shaderProgram) {
+	// Calculate the current bone's global transformation
+	glm::mat4 currentTransform = parentTransform * bone->currentTransform;
+
+	// Extract the position of the current bone
+	glm::vec3 currentPosition = glm::vec3(currentTransform[3]);
+
+	glm::mat4 persp_proj = glm::perspective(45.0f, (float)width / (float)height, 0.1f, 1000.0f);
+	glm::mat4 model(1.0f);
+	glm::vec3 forward(0.0);
+
+	forward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+	forward.y = sin(glm::radians(pitch));
+	forward.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+	forward = glm::normalize(forward);
+	glm::vec3 cameraTarget = cameraPosition + forward;
+	glm::mat4 view = glm::lookAt(cameraPosition, cameraTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+
+
+	// Use the shader to draw the bones
+	glUseProgram(shaderProgram);
+	setMat4(shaderProgram, "view", view);
+	setMat4(shaderProgram, "projection", persp_proj);
+
+	// Set line width for better visualization underwater
+	glLineWidth(3.0f);
+
+	// Draw the bones recursively
+	for (BoneNode* child : bone->children) {
+		// Calculate child transformation
+		glm::mat4 childTransform = currentTransform * child->currentTransform;
+		glm::vec3 childPosition = glm::vec3(childTransform[3]);
+
+		// Vertex data for the line representing the bone
+		float vertices[] = {
+			currentPosition.x, currentPosition.y, currentPosition.z,
+			childPosition.x, childPosition.y, childPosition.z
+		};
+
+		// Set up VAO/VBO for line drawing
+		GLuint VBO, VAO;
+		glGenVertexArrays(1, &VAO);
+		glGenBuffers(1, &VBO);
+
+		glBindVertexArray(VAO);
+		glBindBuffer(GL_ARRAY_BUFFER, VBO);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(0);
+
+		// Draw line between current bone and child
+		glBindVertexArray(VAO);
+		glDrawArrays(GL_LINES, 0, 2);
+
+		// Clean up VAO and VBO
+		glDeleteVertexArrays(1, &VAO);
+		glDeleteBuffers(1, &VBO);
+
+		// Recursively draw the children bones
+		drawBoneRecursive(child, currentTransform, shaderProgram);
+	}
+}
+
+float t = 0;
 void updateScene() {
 
-	//if (!show)
-	//{
-	//	updateBoneTransforms(fish1_mesh, 0);
-	//	show = true;
-	//}
 	auto currentTime = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<float> elapsedTime = currentTime - startTime;
 	float timeInSeconds = elapsedTime.count(); // Get elapsed time in seconds
 
-
-
 	keyControl::updateCameraPosition();
 
-	//if(frame <= 20)
+	//if(t < fish1_mesh.mDuration / fish1_mesh.mTicksPerSecond)
 	{
-		//float time = float(frame) / fish1_mesh.mTicksPerSecond ;
+		//t += 1.0f / fish1_mesh.mTicksPerSecond;
 		updateBoneTransforms(fish1_mesh, timeInSeconds);
-		//frame++;
 	}
 
+	// Draw the bones
+	for (auto& bone : fish1_mesh.boneNodes)
+	{
+		if (bone && !bone->parent)
+		{
+			drawBoneRecursive(bone, glm::mat4(1.0f), boneShaderProgramID);
+		}
+	}
 
 	// Draw the next frame
 	glutPostRedisplay();
