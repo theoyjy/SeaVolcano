@@ -1,0 +1,41 @@
+#version 440 core
+
+layout(location = 0) in vec3 position;  // 顶点位置
+layout(location = 1) in vec4 maskColor; // 顶点 Mask 输入
+layout (location = 3)in vec3 normal;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+uniform float time;  // 时间参数
+
+out float maskValue; // 将 Mask 值传递到片段着色器
+out vec3 fragPosition; // 将世界空间位置传递到片段着色器
+out vec4 fragColor;
+out vec4 EyeCoords;
+out vec3 Normal;
+
+void main() {
+    // 基于时间和位置的摆动动画
+    float waveFrequency = 5.0;  // 波动频率
+    float waveAmplitude = 0.1;  // 波动幅度
+    float wavePhase = sin(position.z * waveFrequency + time) * waveAmplitude;
+
+    vec3 animatedPosition = position + vec3(wavePhase, 0.0, 0.0);
+
+    gl_Position = projection * view * model * vec4(animatedPosition, 1.0);
+
+    maskValue = maskColor.r;  // 使用 red 通道作为 Mask
+    fragPosition = animatedPosition;  // 传递动画后的位置
+    fragColor = maskColor;  // 传递 Mask 颜色
+
+    // Model-view matrix and normal transformation
+    mat4 ModelViewMatrix = view * model;
+    mat3 NormalMatrix = mat3(ModelViewMatrix);
+    
+    // Transform normal to view space and normalize it
+    Normal = normalize(NormalMatrix * normal);
+    
+    // Transform vertex position to view space
+    EyeCoords = ModelViewMatrix * vec4(position, 1.0);
+}

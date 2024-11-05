@@ -20,7 +20,7 @@
 // Project includes
 #include "maths_funcs.h"
 #include <filesystem>
-
+namespace fs = std::filesystem;
 
 #include <glm.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -37,11 +37,13 @@ MESH TO LOAD
 ----------------------------------------------------------------------------*/
 // this mesh is a dae file format but you should be able to use any other format too, obj is typically what is used
 // put the mesh in your project directory, or provide a filepath for it here
-#define VOLCANO_MESH "Assets/volcano.fbx"
-#define FISH1_MESH "Assets/volcano.fbx"
+#define TERRAIN_MESH "Assets/terrain.fbx"
+#define FISH1_MESH "Assets/Armature.001_with_mesh.fbx"
+#define ANIMATION_FOLDER "Assets/animationModels/"
 
-#define TERRIAN 0
-#define FISH1 1
+#define TERRIAN 1
+#define SKELETON 0
+#define COLORANIMATION 0
 
 /*----------------------------------------------------------------------------
 ----------------------------------------------------------------------------*/
@@ -77,9 +79,10 @@ typedef struct ModelData
 	float mDuration = 0.0f;
 	vector<glm::vec3> mVertices;
 	vector<glm::vec3> mNormals;
+	vector<glm::vec4> mColors;
 	vector<vec2> mTextureCoords;
-	vector<float> normalLines;
 
+#if SKELETON
 	vector<string> mBoneNames;          // 骨骼名称
 	vector<glm::ivec4> mBoneIDs;             // 每个顶点受影响的骨骼ID (最多4个)
 	vector<glm::vec4> mWeights;              // 每个顶点受影响骨骼的权重 (最多4个)
@@ -104,6 +107,7 @@ typedef struct ModelData
 	{
 		return mBoneKeyframes.size() > 0;
 	}
+#endif
 
 } ModelData;
 #pragma endregion SimpleTypes
@@ -118,18 +122,20 @@ GLuint terrianShaderProgramID, animationShaderProgramID;
 
 ModelData volcano_terrian_mesh;
 ModelData fish1_mesh;
+vector<ModelData> animation_meshes;
+std::vector<GLuint> animation_vaos;
 unsigned int mesh_vao = 0;
 int width = 1440;
 int height = 720;
 
-
+float timeInSeconds = 0.f;
 GLfloat rotate_y = 0.0f;
 
 #pragma region MESH LOADING
 /*----------------------------------------------------------------------------
 MESH LOADING FUNCTION
 ----------------------------------------------------------------------------*/
-
+#if SKELETON
 void processNodeHierarchy(const aiNode* node, BoneNode* parentBone, ModelData& modelData) {
 	// Check if this node is a bone by looking for its name in the model's bone list
 	std::string nodeName(node->mName.C_Str());
@@ -155,6 +161,7 @@ void buildBoneHierarchy(const aiScene* scene, ModelData& modelData) {
 	const aiNode* rootNode = scene->mRootNode;
 	processNodeHierarchy(rootNode, nullptr, modelData);
 }
+#endif
 
 ModelData load_mesh(const char* file_name, bool with_anime) {
 	ModelData modelData;
@@ -165,11 +172,11 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 	/* are offset from the origin. This is pre-transform them so      */
 	/* they're in the right position.                                 */
 
-	unsigned int pFlags = with_anime ? (aiProcess_FlipUVs | aiProcess_LimitBoneWeights)
+	unsigned int pFlags = with_anime ? (aiProcess_FlipUVs | aiProcess_GenSmoothNormals)
 		: (aiProcess_PreTransformVertices | aiProcess_GlobalScale);
 
 
-	const aiScene* scene = aiImportFile(file_name, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals);
+	const aiScene* scene = aiImportFile(file_name, pFlags | aiProcess_Triangulate);
 
 	if (!scene) {
 		fprintf(stderr, "ERROR: reading mesh %s\n", filesystem::path(file_name).c_str());
@@ -186,11 +193,17 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 		printf("    %i vertices in mesh\n", mesh->mNumVertices);
 		printf("    %i bones in mesh\n", mesh->mNumBones);
 
-		modelData.mPointCount += mesh->mNumVertices;
 		for (unsigned int v_i = 0; v_i < mesh->mNumVertices; v_i++) {
 			if (mesh->HasPositions()) {
 				const aiVector3D* vp = &(mesh->mVertices[v_i]);
 				modelData.mVertices.push_back(glm::vec3(vp->x, vp->y, vp->z));
+			}
+			if (mesh->HasVertexColors(0)) { // Ensure vertex colors exist
+				aiColor4D maskColor = mesh->mColors[0][v_i];
+				modelData.mColors.push_back(glm::vec4(maskColor.r, maskColor.g, maskColor.b, maskColor.a));
+			}
+			else {
+				modelData.mColors.push_back(glm::vec4(1.0, 1.0, 1.0, 1.0)); // Default white color
 			}
 			if (mesh->HasNormals()) {
 				const aiVector3D* vn = &(mesh->mNormals[v_i]);
@@ -206,14 +219,17 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 				/* data for you. Take a look at the flags that aiImportFile  */
 				/* can take.                                                 */
 			}
-
 		}
 
-		if (mesh->HasBones())
+		size_t baseIndex = modelData.mPointCount;
+		modelData.mPointCount += mesh->mNumVertices;
+
+#if SKELETON
+		modelData.mBoneIDs.resize(modelData.mPointCount, glm::vec4(0.0f));
+		modelData.mWeights.resize(modelData.mPointCount, glm::vec4(0.0f));
+
+		if (mesh->HasBones() && with_anime)
 		{
-			modelData.mPointEffectedByBone += mesh->mNumVertices;
-			modelData.mBoneIDs.resize(modelData.mPointEffectedByBone, glm::vec4(0.0f));
-			modelData.mWeights.resize(modelData.mPointEffectedByBone, glm::vec4(0.0f));
 			modelData.mBoneCount += mesh->mNumBones;
 			modelData.boneNodes.resize(modelData.mBoneCount, nullptr);
 
@@ -247,10 +263,10 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 
 					for (int i = 0; i < 4; i++)
 					{
-						if (modelData.mBoneIDs[vertexID][i] == 0)
+						if (modelData.mBoneIDs[baseIndex + vertexID][i] == 0)
 						{
-							modelData.mBoneIDs[vertexID][i] = boneID;
-							modelData.mWeights[vertexID][i] = boneWeight;
+							modelData.mBoneIDs[baseIndex + vertexID][i] = boneID;
+							modelData.mWeights[baseIndex + vertexID][i] = boneWeight;
 							break;
 						}
 					}
@@ -259,10 +275,20 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 			}
 
 			buildBoneHierarchy(scene, modelData);
+
+			for (auto& weights : modelData.mWeights) {
+				float totalWeight = weights.x + weights.y + weights.z + weights.w;
+				if (totalWeight > 0.0f) {
+					weights /= totalWeight; // Normalize weights
+				}
+			}
 		}
+#endif
 	}
 
-	if (scene->HasAnimations()) {
+#if SKELETON
+	if (scene->HasAnimations() && with_anime) {
+		
 		aiAnimation* animation = scene->mAnimations[0];
 
 		// initialize bone keyframes and animations
@@ -303,18 +329,82 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 				modelData.mBoneKeyframes[boneID].push_back(keyframe);
 			}
 		}
-
-		for (auto& weights : fish1_mesh.mWeights) {
-			float totalWeight = weights.x + weights.y + weights.z + weights.w;
-			if (totalWeight > 0.0f) {
-				weights /= totalWeight; // Normalize weights
-			}
-		}
 	}
+#endif //  SKELETON
 
 	aiReleaseImport(scene);
 	cout << "finish load mesh\n";
 	return modelData;
+}
+
+void loadAnimationModels() {
+
+	vector<string> animationModelPaths;
+	try {
+		// Iterate through the directory
+		for (const auto& entry : fs::directory_iterator(ANIMATION_FOLDER)) {
+			// Check if the entry is a file (not a directory)
+			if (entry.is_regular_file()) {
+				animationModelPaths.push_back(entry.path().string());
+				std::cout << entry.path().filename() << std::endl;
+			}
+		}
+	}
+	catch (const fs::filesystem_error& e) {
+		std::cerr << "Filesystem error: " << e.what() << std::endl;
+	}
+	catch (const std::exception& e) {
+		std::cerr << "General exception: " << e.what() << std::endl;
+	}
+
+	for(size_t i = 0; i < animationModelPaths.size(); i++)
+	{
+		animation_meshes.push_back(load_mesh(animationModelPaths[i].c_str(), true));
+	}
+
+	animation_vaos.resize(animationModelPaths.size());
+	std::vector<GLuint> vbos(animationModelPaths.size() * 3); // 3 VBOs: vertices, normals, texCoords
+
+	glUseProgram(animationShaderProgramID);
+	glGenVertexArrays(animationModelPaths.size(), animation_vaos.data());
+	glGenBuffers(animationModelPaths.size() * 3, vbos.data());
+
+	for (int i = 0; i < animationModelPaths.size(); ++i) {
+		ModelData& model = animation_meshes[i];
+
+		glBindVertexArray(animation_vaos[i]);
+
+		// Vertices VBO
+		glBindBuffer(GL_ARRAY_BUFFER, vbos[i * 3]);
+		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec3), model.mVertices.data(), GL_STATIC_DRAW);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+		glEnableVertexAttribArray(0);
+
+		glBindBuffer(GL_ARRAY_BUFFER, vbos[i * 3 + 1]);
+		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec4), model.mColors.data(), GL_STATIC_DRAW);
+		glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+		glEnableVertexAttribArray(1);
+
+		// Normals VBO
+		glBindBuffer(GL_ARRAY_BUFFER, vbos[i * 3 + 1]);
+		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec3), model.mNormals.data(), GL_STATIC_DRAW);
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+		glEnableVertexAttribArray(2);
+
+		//// Texture Coordinates VBO
+		//glBindBuffer(GL_ARRAY_BUFFER, vbos[i * 3 + 2]);
+		//glBufferData(GL_ARRAY_BUFFER, model.texCoords.size() * sizeof(float), model.texCoords.data(), GL_STATIC_DRAW);
+		//glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+		//glEnableVertexAttribArray(2);
+
+		////// Element Buffer Object (EBO)
+		//GLuint ebo;
+		//glGenBuffers(1, &ebo);
+		//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		//glBufferData(GL_ELEMENT_ARRAY_BUFFER, model.indices.size() * sizeof(unsigned int), model.indices.data(), GL_STATIC_DRAW);
+
+		glBindVertexArray(0); // 解绑VAO
+	}
 }
 #pragma endregion MESH LOADING
 
@@ -429,9 +519,19 @@ GLuint CompileShaders()
 	AddShader(terrianShaderProgramID, "simpleFragmentShader.txt", GL_FRAGMENT_SHADER);
 	linkShader(terrianShaderProgramID);
 
+	animationShaderProgramID = glCreateProgram();
+	if (animationShaderProgramID == 0) {
+		std::cerr << "Error creating shader program..." << std::endl;
+		std::cerr << "Press enter/return to exit..." << std::endl;
+		std::cin.get();
+		exit(1);
+	}
+	AddShader(animationShaderProgramID, "ColorVertexShader.txt", GL_VERTEX_SHADER);
+	AddShader(animationShaderProgramID, "ColorFragmentShader.txt", GL_FRAGMENT_SHADER);
+	linkShader(animationShaderProgramID);
 #endif
 
-#if FISH1
+#if SKELETON
 	animationShaderProgramID = glCreateProgram();
 	if (animationShaderProgramID == 0) {
 		std::cerr << "Error creating shader program..." << std::endl;
@@ -441,6 +541,19 @@ GLuint CompileShaders()
 	}
 	AddShader(animationShaderProgramID, "animationVertexShader.txt", GL_VERTEX_SHADER);
 	AddShader(animationShaderProgramID, "simpleFragmentShader.txt", GL_FRAGMENT_SHADER);
+	linkShader(animationShaderProgramID);
+#endif
+
+#if COLORANIMATION
+	animationShaderProgramID = glCreateProgram();
+	if (animationShaderProgramID == 0) {
+		std::cerr << "Error creating shader program..." << std::endl;
+		std::cerr << "Press enter/return to exit..." << std::endl;
+		std::cin.get();
+		exit(1);
+	}
+	AddShader(animationShaderProgramID, "ColorVertexShader.txt", GL_VERTEX_SHADER);
+	AddShader(animationShaderProgramID, "ColorFragmentShader.txt", GL_FRAGMENT_SHADER);
 	linkShader(animationShaderProgramID);
 #endif
 	return 1;
@@ -461,8 +574,8 @@ void generateObjectBufferMesh() {
 	//Might be an idea to do a check for that before generating and binding the buffer.
 #if TERRIAN
 	{
-		volcano_terrian_mesh = load_mesh(VOLCANO_MESH, false);
-
+		volcano_terrian_mesh = load_mesh(TERRAIN_MESH, false);
+		glUseProgram(terrianShaderProgramID);
 		glGenVertexArrays(1, &mesh_vao);
 		glBindVertexArray(mesh_vao);
 
@@ -498,10 +611,11 @@ void generateObjectBufferMesh() {
 		//	glBindBuffer (GL_ARRAY_BUFFER, vt_vbo);
 		//	glBufferData (GL_ARRAY_BUFFER, monkey_head_data.mTextureCoords * sizeof (vec2), &monkey_head_data.mTextureCoords[0], GL_STATIC_DRAW);
 
+		loadAnimationModels();
 	}
 #endif
 
-#if FISH1
+#if SKELETON
 	{ // replace animationVertexShader.txt with simpleVertexShader.txt
 		fish1_mesh = load_mesh(FISH1_MESH, true);
 		GLuint loc1 = glGetAttribLocation(animationShaderProgramID, "position");
@@ -552,6 +666,39 @@ void generateObjectBufferMesh() {
 	}
 #endif
 
+#if COLORANIMATION
+	fish1_mesh = load_mesh(FISH1_MESH, false);
+
+	glGenVertexArrays(1, &mesh_vao);
+	glBindVertexArray(mesh_vao);
+
+	GLuint loc1 = glGetAttribLocation(animationShaderProgramID, "position");
+	GLuint loc2 = glGetAttribLocation(animationShaderProgramID, "maskColor");
+	if(loc1 == -1 || loc2 == -1)
+	{
+		std::cerr << "position or maskColor attribute not found" << std::endl;
+	}
+	//GLuint loc3 = glGetAttribLocation(terrianShaderProgramID, "vertex_texture");
+	GLuint vp_vbo = 0, vc_vbo = 0;
+
+	// Vertex positions
+	glGenBuffers(1, &vp_vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, vp_vbo);
+	glBufferData(GL_ARRAY_BUFFER, fish1_mesh.mPointCount * sizeof(glm::vec3), fish1_mesh.mVertices.data(), GL_STATIC_DRAW);
+	glEnableVertexAttribArray(loc1);
+	glVertexAttribPointer(loc1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+
+	glGenBuffers(1, &vc_vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, vc_vbo);
+	glBufferData(GL_ARRAY_BUFFER, fish1_mesh.mPointCount * sizeof(glm::vec4), fish1_mesh.mColors.data(), GL_STATIC_DRAW);
+	glEnableVertexAttribArray(loc2);
+	glVertexAttribPointer(loc2, 4, GL_FLOAT, GL_FALSE, 0, NULL); // vec4 for RGBA
+
+
+	// Unbind VAO and VBO
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+#endif
 	//	This is for texture coordinates which you don't currently need, so I have commented it out
 	//	glEnableVertexAttribArray (loc3);
 	//	glBindBuffer (GL_ARRAY_BUFFER, vt_vbo);
@@ -600,9 +747,25 @@ void display() {
 	glUniformMatrix4fv(matrix_location, 1, GL_FALSE, glm::value_ptr(model));
 	glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(volcano_terrian_mesh.mPointCount));
 
+
+	glUseProgram(animationShaderProgramID);
+	for (int i = 0; i < animation_vaos.size(); ++i) {
+		glBindVertexArray(animation_vaos[i]);
+		int matrix_location = glGetUniformLocation(animationShaderProgramID, "model");
+		int view_mat_location = glGetUniformLocation(animationShaderProgramID, "view");
+		int proj_mat_location = glGetUniformLocation(animationShaderProgramID, "projection");
+		GLuint timeLocation = glGetUniformLocation(animationShaderProgramID, "time");
+
+		glUniformMatrix4fv(proj_mat_location, 1, GL_FALSE, persp_proj.m);
+		glUniformMatrix4fv(view_mat_location, 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(matrix_location, 1, GL_FALSE, glm::value_ptr(model));
+		glUniform1f(timeLocation, timeInSeconds);
+		glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(animation_meshes[i].mPointCount));
+	}
+
 #endif // TERRIAN
 
-#if FISH1
+#if SKELETON
 
 	glUseProgram(animationShaderProgramID);
 	glBindVertexArray(mesh_vao);
@@ -641,6 +804,36 @@ void display() {
 	glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(fish1_mesh.mPointCount));
 #endif
 
+#if COLORANIMATION
+	glUseProgram(animationShaderProgramID);
+	glBindVertexArray(mesh_vao);
+	//Declare your uniform variables that will be used in your shader
+	int matrix_location = glGetUniformLocation(animationShaderProgramID, "model");
+	int view_mat_location = glGetUniformLocation(animationShaderProgramID, "view");
+	int proj_mat_location = glGetUniformLocation(animationShaderProgramID, "projection");
+	GLuint timeLocation = glGetUniformLocation(animationShaderProgramID, "time");
+
+	// Root of the Hierarchy
+	mat4 persp_proj = perspective(45.0f, (float)width / (float)height, 0.1f, 1000.0f);
+	glm::mat4 model(1.0f);
+
+
+	// Update the view matrix
+	glm::vec3 forward(0.0);
+	forward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+	forward.y = sin(glm::radians(pitch));
+	forward.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+	forward = glm::normalize(forward);
+	glm::vec3 cameraTarget = cameraPosition + forward;
+	glm::mat4 view = glm::lookAt(cameraPosition, cameraTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+
+	// update uniforms & draw
+	glUniformMatrix4fv(proj_mat_location, 1, GL_FALSE, persp_proj.m);
+	glUniformMatrix4fv(view_mat_location, 1, GL_FALSE, glm::value_ptr(view));
+	glUniformMatrix4fv(matrix_location, 1, GL_FALSE, glm::value_ptr(model));
+	glUniform1f(timeLocation, timeInSeconds);
+	glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(fish1_mesh.mPointCount));
+#endif
 	glutSwapBuffers();
 }
 
@@ -663,8 +856,9 @@ std::pair<int, float> getTimeFraction(const std::vector<KeyFrame>& keyframes, fl
 	}
 	return { 1, 0.0f }; // Return first frame if looping
 }
-
+#if SKELETON
 void updateBoneTransforms(ModelData& modelData, float timeInSeconds) {
+
 	if (!modelData.HasAnimations()) {
 		return;
 	}
@@ -744,7 +938,7 @@ void updateBoneTransforms(ModelData& modelData, float timeInSeconds) {
 	}
 
 }
-
+#endif //  SKELETON
 
 bool show = false;
 int frame = 1;
@@ -757,7 +951,7 @@ void updateScene() {
 	//}
 	auto currentTime = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<float> elapsedTime = currentTime - startTime;
-	float timeInSeconds = elapsedTime.count(); // Get elapsed time in seconds
+	timeInSeconds = elapsedTime.count(); // Get elapsed time in seconds
 
 
 
@@ -766,7 +960,9 @@ void updateScene() {
 	//if(frame <= 20)
 	{
 		//float time = float(frame) / fish1_mesh.mTicksPerSecond ;
+#if SKELETON
 		updateBoneTransforms(fish1_mesh, timeInSeconds);
+#endif
 		//frame++;
 	}
 

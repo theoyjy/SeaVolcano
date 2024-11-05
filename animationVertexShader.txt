@@ -25,7 +25,7 @@ void main()
     // This is a simple translation along the X-axis by +5 units
 
     // Compute final position and normal after model and view transformations
-    mat4 modelViewMatrix = view * model;
+    mat4 modelViewMatrix = model * view;
     vec4 transformedPosition = modelViewMatrix * animatedPosition;
     EyeCoords = transformedPosition;
 

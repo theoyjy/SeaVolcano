@@ -10,12 +10,12 @@
 
 using namespace std;
 
-const glm::vec3 cameraDefaultPosition(-4.0f, 15.0f, 33.0f);
+const glm::vec3 cameraDefaultPosition(-4.0f, 8.0f, 30.0f);
 //const glm::vec3 cameraDefaultPosition(0.0f, 0.0f, 0.0f);
 glm::vec3 cameraPosition = cameraDefaultPosition; // Camera position in world space
 
-const float defaultYaw = -87.0f;
-const float defaultPitch = -29.0f;
+const float defaultYaw = -80.f;
+const float defaultPitch = -5.f;
 //const float defaultYaw = 0.f;
 //const float defaultPitch = 0.0f;
 float yaw = defaultYaw;  // Horizontal rotation (around Y-axis)
@@ -131,8 +131,8 @@ namespace keyControl
 		cout << "yaw: " << yaw << " pitch: " << pitch << endl;
 
 		// Constrain the pitch to avoid gimbal lock
-		if (pitch > 89.0f) pitch = 89.0f;
-		if (pitch < -89.0f) pitch = -89.0f;
+		if (pitch > 87.0f) pitch = 87.0f;
+		if (pitch < -87.0f) pitch = -87.0f;
 
 		glutPostRedisplay();
 	}
