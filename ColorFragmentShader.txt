@@ -41,6 +41,6 @@ void main(){
     LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
     LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
 
-
-    gl_FragColor  = mix(vec4(0.0, 0.0, 0.0, 1.0), vec4(LightIntensity, 1.0), maskValue); // 使用 maskValue 混合颜色
+    gl_FragColor = vec4 (LightIntensity, 1.0);
+    //gl_FragColor  = mix(vec4(0.0, 0.0, 0.0, 1.0), vec4(LightIntensity, 1.0), maskValue); // 使用 maskValue 混合颜色
 }

@@ -60,7 +60,7 @@ namespace keyControl
 		}
 	}
 
-	const float normalSpeed = 0.1f;
+	const float normalSpeed = 0.05f;
 	// update camera position
 	void updateCameraPosition() {
 

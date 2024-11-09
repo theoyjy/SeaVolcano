@@ -7,6 +7,8 @@
 #include <math.h>
 #include <vector> // STL dynamic memory.
 #include <unordered_map>
+#include <cstdlib>
+#include <ctime>
 
 // OpenGL includes
 #include <GL/glew.h>
@@ -72,15 +74,20 @@ struct BoneNode {
 typedef struct ModelData
 {
 	size_t mPointCount = 0;
-	size_t mPointEffectedByBone = 0;
-	size_t mBoneCount = 0;
-	size_t mAnimationCount = 0;
-	float mTicksPerSecond = 0.0f;
-	float mDuration = 0.0f;
+	//size_t mPointEffectedByBone = 0;
+	//size_t mBoneCount = 0;
+	//size_t mAnimationCount = 0;
+	//float mTicksPerSecond = 0.0f;
+	//float mDuration = 0.0f;
+	GLuint mVao = 0;
+	glm::vec3 mCentroid {0.f, 0.f, 0.f};
+	float volumnRadius = 0.0f;
 	vector<glm::vec3> mVertices;
 	vector<glm::vec3> mNormals;
 	vector<glm::vec4> mColors;
 	vector<vec2> mTextureCoords;
+	glm::mat4 mLocalTransform;
+	vector<ModelData> mChildMeshes;
 
 #if SKELETON
 	vector<string> mBoneNames;          // ¹Ç÷ÀÃû³Æ
@@ -129,7 +136,8 @@ int width = 1440;
 int height = 720;
 
 float timeInSeconds = 0.f;
-GLfloat rotate_y = 0.0f;
+GLfloat rotate_head = 0.0f, rotate_fin = 0.0f;
+vector<glm::vec3> fish_translations(9, glm::vec3(0.0f));
 
 #pragma region MESH LOADING
 /*----------------------------------------------------------------------------
@@ -163,7 +171,16 @@ void buildBoneHierarchy(const aiScene* scene, ModelData& modelData) {
 }
 #endif
 
-ModelData load_mesh(const char* file_name, bool with_anime) {
+glm::mat4 ConvertToGLMMat4(const aiMatrix4x4& aiMat) {
+	return glm::mat4(
+		aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1,
+		aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2,
+		aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3,
+		aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4
+	);
+}
+
+ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
 	ModelData modelData;
 
 	/* Use assimp to read the model file, forcing it to be read as    */
@@ -172,7 +189,7 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 	/* are offset from the origin. This is pre-transform them so      */
 	/* they're in the right position.                                 */
 
-	unsigned int pFlags = with_anime ? (aiProcess_FlipUVs | aiProcess_GenSmoothNormals)
+	unsigned int pFlags = b_hierarchical_mesh ? (aiProcess_FlipUVs | aiProcess_GenSmoothNormals)
 		: (aiProcess_PreTransformVertices | aiProcess_GlobalScale);
 
 
@@ -193,25 +210,40 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 		printf("    %i vertices in mesh\n", mesh->mNumVertices);
 		printf("    %i bones in mesh\n", mesh->mNumBones);
 
+		ModelData* modelPtr = nullptr;
+		if (m_i >= 1) // child mesh
+		{
+			modelData.mChildMeshes.push_back(ModelData());
+			modelPtr = &modelData.mChildMeshes.back();
+			if(b_hierarchical_mesh)
+				modelPtr->mLocalTransform = ConvertToGLMMat4(scene->mRootNode->mChildren[0]->mChildren[m_i - 1]->mTransformation);
+		}
+		else // first mesh
+		{
+			modelPtr = &modelData;
+			modelPtr->mLocalTransform = glm::mat4(1.0f);
+		}
+
+		//glm::mat4 localTransform = ConvertToGLMMat4(mesh->transform);
 		for (unsigned int v_i = 0; v_i < mesh->mNumVertices; v_i++) {
 			if (mesh->HasPositions()) {
 				const aiVector3D* vp = &(mesh->mVertices[v_i]);
-				modelData.mVertices.push_back(glm::vec3(vp->x, vp->y, vp->z));
+				modelPtr->mVertices.push_back(glm::vec3(vp->x, vp->y, vp->z));
 			}
 			if (mesh->HasVertexColors(0)) { // Ensure vertex colors exist
 				aiColor4D maskColor = mesh->mColors[0][v_i];
-				modelData.mColors.push_back(glm::vec4(maskColor.r, maskColor.g, maskColor.b, maskColor.a));
+				modelPtr->mColors.push_back(glm::vec4(maskColor.r, maskColor.g, maskColor.b, maskColor.a));
 			}
 			else {
-				modelData.mColors.push_back(glm::vec4(1.0, 1.0, 1.0, 1.0)); // Default white color
+				modelPtr->mColors.push_back(glm::vec4(1.0, 1.0, 1.0, 1.0)); // Default white color
 			}
 			if (mesh->HasNormals()) {
 				const aiVector3D* vn = &(mesh->mNormals[v_i]);
-				modelData.mNormals.push_back(glm::vec3(vn->x, vn->y, vn->z));
+				modelPtr->mNormals.push_back(glm::vec3(vn->x, vn->y, vn->z));
 			}
 			if (mesh->HasTextureCoords(0)) {
 				const aiVector3D* vt = &(mesh->mTextureCoords[0][v_i]);
-				modelData.mTextureCoords.push_back(vec2(vt->x, vt->y));
+				modelPtr->mTextureCoords.push_back(vec2(vt->x, vt->y));
 			}
 			if (mesh->HasTangentsAndBitangents()) {
 				/* You can extract tangents and bitangents here              */
@@ -222,7 +254,22 @@ ModelData load_mesh(const char* file_name, bool with_anime) {
 		}
 
 		size_t baseIndex = modelData.mPointCount;
-		modelData.mPointCount += mesh->mNumVertices;
+		modelPtr->mPointCount += mesh->mNumVertices;
+
+		
+		for (const auto& vertex : modelPtr->mVertices) {
+			modelPtr->mCentroid += vertex;
+		}
+		modelPtr->mCentroid /= static_cast<float>(modelPtr->mPointCount);
+
+
+		for (const auto& vertex : modelPtr->mVertices) {
+			float distance = glm::length(vertex - modelPtr->mCentroid);
+			if (distance > modelPtr->volumnRadius) {
+				modelPtr->volumnRadius = distance;
+			}
+		}
+
 
 #if SKELETON
 		modelData.mBoneIDs.resize(modelData.mPointCount, glm::vec4(0.0f));
@@ -362,48 +409,65 @@ void loadAnimationModels() {
 		animation_meshes.push_back(load_mesh(animationModelPaths[i].c_str(), true));
 	}
 
-	animation_vaos.resize(animationModelPaths.size());
-	std::vector<GLuint> vbos(animationModelPaths.size() * 3); // 3 VBOs: vertices, normals, texCoords
 
 	glUseProgram(animationShaderProgramID);
-	glGenVertexArrays(animationModelPaths.size(), animation_vaos.data());
-	glGenBuffers(animationModelPaths.size() * 3, vbos.data());
 
 	for (int i = 0; i < animationModelPaths.size(); ++i) {
 		ModelData& model = animation_meshes[i];
 
-		glBindVertexArray(animation_vaos[i]);
+		glGenVertexArrays(1, &model.mVao);
+		glBindVertexArray(model.mVao);
+		GLuint vbos[3] = { 0, 0 , 0};
+		glGenBuffers(3, vbos);
 
 		// Vertices VBO
-		glBindBuffer(GL_ARRAY_BUFFER, vbos[i * 3]);
+		glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
 		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec3), model.mVertices.data(), GL_STATIC_DRAW);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
 		glEnableVertexAttribArray(0);
 
-		glBindBuffer(GL_ARRAY_BUFFER, vbos[i * 3 + 1]);
+		// Colors VBO
+		glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
 		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec4), model.mColors.data(), GL_STATIC_DRAW);
 		glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
 		glEnableVertexAttribArray(1);
 
 		// Normals VBO
-		glBindBuffer(GL_ARRAY_BUFFER, vbos[i * 3 + 1]);
+		glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
 		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec3), model.mNormals.data(), GL_STATIC_DRAW);
 		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
 		glEnableVertexAttribArray(2);
 
-		//// Texture Coordinates VBO
-		//glBindBuffer(GL_ARRAY_BUFFER, vbos[i * 3 + 2]);
-		//glBufferData(GL_ARRAY_BUFFER, model.texCoords.size() * sizeof(float), model.texCoords.data(), GL_STATIC_DRAW);
-		//glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-		//glEnableVertexAttribArray(2);
-
-		////// Element Buffer Object (EBO)
-		//GLuint ebo;
-		//glGenBuffers(1, &ebo);
-		//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-		//glBufferData(GL_ELEMENT_ARRAY_BUFFER, model.indices.size() * sizeof(unsigned int), model.indices.data(), GL_STATIC_DRAW);
-
 		glBindVertexArray(0); // ½â°óVAO
+
+		for (int j = 0; j < model.mChildMeshes.size(); ++j)
+		{
+			ModelData& child = model.mChildMeshes[j];
+			glGenVertexArrays(1, &child.mVao);
+			glBindVertexArray(child.mVao);
+			GLuint vbos[3] = { 0, 0 , 0 };
+			glGenBuffers(3, vbos);
+		
+			// Vertices VBO
+			glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
+			glBufferData(GL_ARRAY_BUFFER, child.mPointCount * sizeof(glm::vec3), child.mVertices.data(), GL_STATIC_DRAW);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+			glEnableVertexAttribArray(0);
+		
+			// Colors VBO
+			glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
+			glBufferData(GL_ARRAY_BUFFER, child.mPointCount * sizeof(glm::vec4), child.mColors.data(), GL_STATIC_DRAW);
+			glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+			glEnableVertexAttribArray(1);
+		
+			// Normals VBO
+			glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
+			glBufferData(GL_ARRAY_BUFFER, child.mPointCount * sizeof(glm::vec3), child.mNormals.data(), GL_STATIC_DRAW);
+			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+			glEnableVertexAttribArray(2);
+		
+			glBindVertexArray(0); // ½â°óVAO
+		}
 	}
 }
 #pragma endregion MESH LOADING
@@ -585,9 +649,6 @@ void generateObjectBufferMesh() {
 		//GLuint loc3 = glGetAttribLocation(terrianShaderProgramID, "vertex_texture");
 		GLuint vp_vbo = 0, vn_vbo = 0;
 
-		glGenVertexArrays(1, &mesh_vao);
-		glBindVertexArray(mesh_vao);
-
 		// Vertex positions
 		glGenBuffers(1, &vp_vbo);
 		glBindBuffer(GL_ARRAY_BUFFER, vp_vbo);
@@ -749,18 +810,48 @@ void display() {
 
 
 	glUseProgram(animationShaderProgramID);
-	for (int i = 0; i < animation_vaos.size(); ++i) {
-		glBindVertexArray(animation_vaos[i]);
+	for (int i = 0; i < animation_meshes.size(); ++i) {
+		glBindVertexArray(animation_meshes[i].mVao);
+
 		int matrix_location = glGetUniformLocation(animationShaderProgramID, "model");
 		int view_mat_location = glGetUniformLocation(animationShaderProgramID, "view");
 		int proj_mat_location = glGetUniformLocation(animationShaderProgramID, "projection");
-		GLuint timeLocation = glGetUniformLocation(animationShaderProgramID, "time");
+		//GLuint timeLocation = glGetUniformLocation(animationShaderProgramID, "time");
+
+		glm::mat4 parent(1.0f);
+		parent = glm::translate(parent, fish_translations[i]);
 
 		glUniformMatrix4fv(proj_mat_location, 1, GL_FALSE, persp_proj.m);
 		glUniformMatrix4fv(view_mat_location, 1, GL_FALSE, glm::value_ptr(view));
-		glUniformMatrix4fv(matrix_location, 1, GL_FALSE, glm::value_ptr(model));
-		glUniform1f(timeLocation, timeInSeconds);
+		glUniformMatrix4fv(matrix_location, 1, GL_FALSE, glm::value_ptr(parent));
+		//glUniform1f(timeLocation, timeInSeconds);
 		glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(animation_meshes[i].mPointCount));
+		for(int j = 0; j < animation_meshes[i].mChildMeshes.size(); ++j)
+		{
+			auto& childMesh = animation_meshes[i].mChildMeshes[j];
+			glm::mat4 child(1.0);
+			if (j == 0)
+			{
+				child = glm::rotate(child, glm::radians(rotate_head), glm::vec3(0.0f, 1.0f, 0.0f));
+
+				//child = glm::translate(child, glm::vec3(0.0f, -0.5f, 0.0f) * glm::radians(rotate_head));
+			}
+			else
+			{
+				child = glm::rotate(child, glm::radians(rotate_fin), glm::vec3(0.0f, 1.0f, 0.0f));
+				//child = glm::translate(child, glm::vec3(0.0f, 1.f, 0.0f) * glm::radians(rotate_fin));
+
+			}
+			
+			child = parent * animation_meshes[i].mChildMeshes[j].mLocalTransform * child;
+
+			glBindVertexArray(animation_meshes[i].mChildMeshes[j].mVao);
+			glUniformMatrix4fv(proj_mat_location, 1, GL_FALSE, persp_proj.m);
+			glUniformMatrix4fv(view_mat_location, 1, GL_FALSE, glm::value_ptr(view));
+			glUniformMatrix4fv(matrix_location, 1, GL_FALSE, glm::value_ptr(child));
+			//glUniform1f(timeLocation, timeInSeconds);
+			glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(animation_meshes[i].mChildMeshes[j].mPointCount));
+		}
 	}
 
 #endif // TERRIAN
@@ -942,33 +1033,44 @@ void updateBoneTransforms(ModelData& modelData, float timeInSeconds) {
 
 bool show = false;
 int frame = 1;
+const float PI = 3.14159265358979323846f;
+vector<glm::vec3> fish_directions = { 
+	glm::vec3(0.0f, 0.0f, -0.1f), 
+	glm::vec3(0.1f, 0.0f, -0.1f),
+	glm::vec3(0.1f, 0.0f, -0.1f),
+	glm::vec3(-0.1f, 0.0f, -0.1f),
+	glm::vec3(-0.1f, 0.0f, 0.0f),
+	glm::vec3(0.1f, 0.0f, -0.1f),
+	glm::vec3(0.1f, 0.0f, -0.1f),
+	glm::vec3(-0.1f, 0.0f, 0.1f),
+	glm::vec3(-0.1f, 0.0f, -0.1f),
+};
 void updateScene() {
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<float> elapsedTime = currentTime - startTime;
+    timeInSeconds = elapsedTime.count(); // Get elapsed time in seconds
 
-	//if (!show)
-	//{
-	//	updateBoneTransforms(fish1_mesh, 0);
-	//	show = true;
-	//}
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<float> elapsedTime = currentTime - startTime;
-	timeInSeconds = elapsedTime.count(); // Get elapsed time in seconds
+    rotate_fin = 0.25f * sin(timeInSeconds);
+    rotate_head = 0.25f * sin(timeInSeconds + PI / 2.0f); // Use M_PI constant
 
-
-
-	keyControl::updateCameraPosition();
-
-	//if(frame <= 20)
+	for(int i = 0; i < fish_translations.size(); ++i)
 	{
-		//float time = float(frame) / fish1_mesh.mTicksPerSecond ;
-#if SKELETON
-		updateBoneTransforms(fish1_mesh, timeInSeconds);
-#endif
-		//frame++;
+		fish_translations[i] += fish_directions[i] * 0.001f;
 	}
 
+    keyControl::updateCameraPosition();
 
-	// Draw the next frame
-	glutPostRedisplay();
+    //if(frame <= 20)
+    {
+        //float time = float(frame) / fish1_mesh.mTicksPerSecond ;
+#if SKELETON
+        updateBoneTransforms(fish1_mesh, timeInSeconds);
+#endif
+        //frame++;
+    }
+
+    // Draw the next frame
+    glutPostRedisplay();
 }
 
 
