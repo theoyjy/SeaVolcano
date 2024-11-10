@@ -3,40 +3,58 @@
 in vec4 EyeCoords;
 in vec3 Normal;
 
-vec4 VolcanoLightPosition = vec4(0.0, 2.0, 0.0, 1.0); // Volcano light position in world coordinates.
-vec3 VolcanoKd = vec3(1.0, 0.0, 0.0); // Red diffuse reflectance for volcano
-vec3 VolcanoLd = vec3(1.0, 1.0, 1.0); // White light intensity for volcano
+uniform vec3 smokeColor;           // Base color for fog
+uniform float density;           // Density for fog effect
+uniform vec3 viewPos;            // Camera position
+uniform bool isSmoke;              // Flag to indicate fog vs. regular object
 
-vec4 SeaLightPosition1 = vec4(-25.0, -10.0, -25.0, 1.0); // Sea light position in world coordinates.
-vec4 SeaLightPosition2 = vec4(25.0, -10.0, 25.0, 1.0); // Sea light position in world coordinates.
-vec4 SeaLightPosition3 = vec4(-25.0, -10.0, 25.0, 1.0); // Sea light position in world coordinates.
-vec4 SeaLightPosition4 = vec4(25.0, -10.0, -25.0, 1.0); // Sea light position in world coordinates.
+// Volcano and Sea Lights
+vec4 VolcanoLightPosition = vec4(0.0, 2.0, 0.0, 1.0);
+vec3 VolcanoLd = vec3(1.0, 1.0, 1.0);
 
-vec3 SeaKd = vec3(0.004f, 0.361f, 0.588f); // diffuse reflectance for sea light
-vec3 SeaLd = vec3(1.0, 1.0, 1.0); // White light intensity for sea light
+vec4 SeaLightPosition1 = vec4(-25.0, -10.0, -25.0, 1.0);
+vec4 SeaLightPosition2 = vec4(25.0, -10.0, 25.0, 1.0);
+vec4 SeaLightPosition3 = vec4(-25.0, -10.0, 25.0, 1.0);
+vec4 SeaLightPosition4 = vec4(25.0, -10.0, -25.0, 1.0);
+vec3 SeaLd = vec3(1.0, 1.0, 1.0);
+
+// Diffuse colors for volcano and sea lights
+vec3 VolcanoKd = vec3(1.0, 0.0, 0.0);
+vec3 SeaKd = vec3(0.004f, 0.361f, 0.588f);
 
 vec3 CalcLightIntensity(vec4 LightPosition, vec3 normal, vec3 Kd, vec3 Ld, vec4 eyeCoords, float constant, float linear, float quadratic) {
-    // Calculate the distance from the light to the fragment in view space
     float distance = length(LightPosition.xyz - eyeCoords.xyz);
     float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
-    
-    // Calculate the direction from the fragment to the light source
     vec3 s = normalize(vec3(LightPosition - eyeCoords));
-    
-    // Diffuse lighting calculation
     return Ld * Kd * max(dot(s, normal), 0.0) * attenuation;
 }
 
-void main(){
+void main() {
+    vec3 LightIntensity;
 
-    // Calculate volcano light contribution
-    vec3 LightIntensity = CalcLightIntensity(VolcanoLightPosition, Normal, VolcanoKd, VolcanoLd, EyeCoords, 1.0, 0.001, 0.0001);
+    if (isSmoke) {
+        // Smoke effect calculations
+        float distance = length(viewPos - EyeCoords.xyz);
+        float smokeFactor = exp(-density * distance);  // Exponential falloff
 
-    // Calculate sea light contribution
-    LightIntensity += CalcLightIntensity(SeaLightPosition1, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
-    LightIntensity += CalcLightIntensity(SeaLightPosition2, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
-    LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
-    LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        // Calculate smoke lighting using the same light sources
+        LightIntensity = CalcLightIntensity(VolcanoLightPosition, Normal, smokeColor, VolcanoLd, EyeCoords, 1.0, 0.001, 0.0001);
+        LightIntensity += CalcLightIntensity(SeaLightPosition1, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition2, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
 
-	gl_FragColor = vec4 (LightIntensity, 1.0);
+        // Apply smoke color blending based on smokeFactor
+        vec3 finalSmokeColor = mix(smokeColor, LightIntensity, smokeFactor);
+        gl_FragColor = vec4(finalSmokeColor, smokeFactor);  
+    } else {
+        // Standard lighting for regular objects
+        LightIntensity = CalcLightIntensity(VolcanoLightPosition, Normal, VolcanoKd, VolcanoLd, EyeCoords, 1.0, 0.001, 0.0001);
+        LightIntensity += CalcLightIntensity(SeaLightPosition1, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition2, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+
+        gl_FragColor = vec4(LightIntensity, 1.0);  // Solid alpha for regular objects
+    }
 }

@@ -1,3 +1,16 @@
+**Demonstration video:** https://www.youtube.com/watch?v=53ZmWnFnnbc
+### `main.cpp`
+Main implementation:
+- The data structure of each mesh and its children meshes
+- `load_mesh()` method would load up one mesh, and its own children meshes, as well as build hierarchical relationships. Because until now, the only hierarchical animation contained is the fish which is quite simple, it only has two layer: one for parent mesh (fish body), and one layer for all the other meshes(fin, head). That is why the code only map the hierarchy to two layer relationship.
+- `generateObjectBufferMesh()` method would trigger the load process of all the models needed, and it would call a internal lambda function `SetUpModelBuffers()` to set up buffers for each mesh and recursively set up for its children meshes.
+- `display()` function would pass the `view, model, proj` for each mesh to the shader. And if it's the smoke mesh, then it would pass more variables to shader such as smoke color, camera position to adjust the transparency of the smoke
+- `updateScene()` would :
+	- update the rotation values of different meshes along the hierarchy, so they could look more realistically
+	- update each fish's translation with its own direction.
+	- update camera position by checking if listened key being pressed, in this way, different key can be pressed together to produce a combined direction.
+
+```cpp
 // Windows includes(For Time, IO, etc.)
 #include <windows.h>
 #include <mmsystem.h>
@@ -583,3 +596,253 @@ int main(int argc, char** argv) {
 	glutMainLoop();
 	return 0;
 }
+```
+
+### `CameraControl.hpp`
+Main implementation:
+- Default values of camera position and rotations to initialize the camera and also support to reset the camera position(Key: R) and rotation(click Right mouse) 
+- A map that records the keys being pressed, so it can combine all the inputs when updating the camera position.
+- When updating the camera position, it would retrieve the forward, up, right directions of current camera, so that the position can be updating accordingly.
+- Listen to mouse press and move so that user can adjust the camera rotation by pressing and dragging the left mouse.
+
+```cpp
+#include <unordered_map>
+#include <iostream>
+#include <GL/glut.h>
+#include <GL/freeglut.h>
+
+#include <glm.hpp>
+#include <gtc/type_ptr.hpp>
+#include <gtc/matrix_transform.hpp>
+#include <gtc/quaternion.hpp>
+
+using namespace std;
+
+const glm::vec3 cameraDefaultPosition(-4.0f, 8.0f, 30.0f);
+glm::vec3 cameraPosition = cameraDefaultPosition; // Camera position in world space
+
+const float defaultYaw = -80.f;
+const float defaultPitch = -5.f;
+float yaw = defaultYaw;  // Horizontal rotation (around Y-axis)
+float pitch = defaultPitch; // Vertical rotation (around X-axis)
+
+// camera and keyboard, mouse input
+int lastMouseX = 0, lastMouseY = 0;
+float angleX = 0.0f, angleY = 0.0f;
+
+namespace keyControl
+{
+	// record the state of the keyboard
+	std::unordered_map<unsigned char, bool> keyState;
+	bool isShiftPressed = false; // record is shift key pressed
+	bool isTranslationTriggered = false; // record is translation triggered
+
+	// update kep pressed
+	void keypress(unsigned char key, int x, int y) {
+		key = std::tolower(key); // only record lower case
+		keyState[key] = true;
+		isTranslationTriggered = true;
+	}
+
+	// update kep released
+	void keyRelease(unsigned char key, int x, int y) {
+		key = std::tolower(key);
+		keyState[key] = false;
+		isTranslationTriggered = false;
+	}
+
+	// update shift statue
+	void specialKeypress(int key, int x, int y) {
+		if (key == GLUT_KEY_SHIFT_L || key == GLUT_KEY_SHIFT_R) {
+			isShiftPressed = true;
+		}
+	}
+
+	// update shift statue
+	void specialKeyRelease(int key, int x, int y) {
+		if (key == GLUT_KEY_SHIFT_L || key == GLUT_KEY_SHIFT_R) {
+			isShiftPressed = false;
+		}
+	}
+
+	const float normalSpeed = 0.05f;
+	// update camera position
+	void updateCameraPosition() {
+
+		if (!isTranslationTriggered)
+			return;
+		// update speed based on shift key
+		float currentSpeed = isShiftPressed ? (normalSpeed * 2) : normalSpeed;
+
+		// calculate the forward, right, up vectors of camera
+		glm::vec3 forward(0.0);
+		forward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+		forward.y = sin(glm::radians(pitch));
+		forward.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+		forward = glm::normalize(forward);
+		glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+		glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+		// update camera position
+		if (keyState['w']) {
+			cameraPosition += forward * currentSpeed;
+		}
+		if (keyState['s']) {
+			cameraPosition -= forward * currentSpeed;
+		}
+		if (keyState['a']) {
+			cameraPosition -= right * currentSpeed;
+		}
+		if (keyState['d']) {
+			cameraPosition += right * currentSpeed;
+		}
+		if (keyState['q']) {
+			cameraPosition += up * currentSpeed;
+		}
+		if (keyState['e']) {
+			cameraPosition -= up * currentSpeed;
+		}
+		if (keyState['r']) { // reset camera position
+			cameraPosition = cameraDefaultPosition;
+		}
+
+		cout << "cameraPosition: " << cameraPosition.x << " " << cameraPosition.y << " " << cameraPosition.z << endl;
+	}
+
+	// record the location of just pressed mouse
+	void mouseButton(int button, int state, int x, int y) {
+		if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+			lastMouseX = x;
+			lastMouseY = y;
+		}
+		else if (button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN) {
+			yaw = defaultYaw;
+			pitch = defaultPitch;
+		}
+	}
+
+	// update camera rotation angle accroding to mouse movement compared to last time
+	const float sensitivity = 0.3f;
+	void mouseMotion(int x, int y) {
+		int deltaX = x - lastMouseX;
+		int deltaY = y - lastMouseY;
+
+		lastMouseX = x;
+		lastMouseY = y;
+
+		yaw += deltaX * sensitivity;
+		pitch -= deltaY * sensitivity;
+
+		cout << "deltaX: " << deltaX << " deltaY: " << deltaY << endl;
+		cout << "yaw: " << yaw << " pitch: " << pitch << endl;
+
+		// Constrain the pitch to avoid gimbal lock
+		if (pitch > 87.0f) pitch = 87.0f;
+		if (pitch < -87.0f) pitch = -87.0f;
+
+		glutPostRedisplay();
+	}
+
+};
+```
+
+### Vertex shader
+
+```cpp
+#version 440
+
+in vec3 vertex_position;
+in vec3 vertex_normal;
+
+out vec4 EyeCoords;
+out vec3 Normal;
+
+uniform mat4 view;
+uniform mat4 proj;
+uniform mat4 model;
+
+void main() {
+
+    // Model-view matrix and normal transformation
+    mat4 ModelViewMatrix = view * model;
+    mat3 NormalMatrix = mat3(ModelViewMatrix);
+    
+    // Transform normal to view space and normalize it
+    Normal = normalize(NormalMatrix * vertex_normal);
+    
+    // Transform vertex position to view space
+    EyeCoords = ModelViewMatrix * vec4(vertex_position, 1.0);
+
+    // Convert position to clip coordinates and pass along
+    gl_Position = proj * view * model * vec4(vertex_position, 1.0);
+}
+```
+
+### Fragment Shader
+
+There are 5 lights in total, one from the center of the volcano which is red, the other four are blue lights at the corners of the terrain. For most of the models, they will be lighted with the mentioned lightings to calculate the color, but as for the smoke, all the lightings are replaced with the color of smoke.
+
+
+```cpp
+#version 330
+
+in vec4 EyeCoords;
+in vec3 Normal;
+
+uniform vec3 smokeColor;           // Base color for fog
+uniform float density;           // Density for fog effect
+uniform vec3 viewPos;            // Camera position
+uniform bool isSmoke;              // Flag to indicate fog vs. regular object
+
+// Volcano and Sea Lights
+vec4 VolcanoLightPosition = vec4(0.0, 2.0, 0.0, 1.0);
+vec3 VolcanoLd = vec3(1.0, 1.0, 1.0);
+
+vec4 SeaLightPosition1 = vec4(-25.0, -10.0, -25.0, 1.0);
+vec4 SeaLightPosition2 = vec4(25.0, -10.0, 25.0, 1.0);
+vec4 SeaLightPosition3 = vec4(-25.0, -10.0, 25.0, 1.0);
+vec4 SeaLightPosition4 = vec4(25.0, -10.0, -25.0, 1.0);
+vec3 SeaLd = vec3(1.0, 1.0, 1.0);
+
+// Diffuse colors for volcano and sea lights
+vec3 VolcanoKd = vec3(1.0, 0.0, 0.0);
+vec3 SeaKd = vec3(0.004f, 0.361f, 0.588f);
+
+vec3 CalcLightIntensity(vec4 LightPosition, vec3 normal, vec3 Kd, vec3 Ld, vec4 eyeCoords, float constant, float linear, float quadratic) {
+    float distance = length(LightPosition.xyz - eyeCoords.xyz);
+    float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
+    vec3 s = normalize(vec3(LightPosition - eyeCoords));
+    return Ld * Kd * max(dot(s, normal), 0.0) * attenuation;
+}
+
+void main() {
+    vec3 LightIntensity;
+
+    if (isSmoke) {
+        // Smoke effect calculations
+        float distance = length(viewPos - EyeCoords.xyz);
+        float smokeFactor = exp(-density * distance);  // Exponential falloff
+
+        // Calculate smoke lighting using the same light sources
+        LightIntensity = CalcLightIntensity(VolcanoLightPosition, Normal, smokeColor, VolcanoLd, EyeCoords, 1.0, 0.001, 0.0001);
+        LightIntensity += CalcLightIntensity(SeaLightPosition1, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition2, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+
+        // Apply smoke color blending based on smokeFactor
+        vec3 finalSmokeColor = mix(smokeColor, LightIntensity, smokeFactor);
+        gl_FragColor = vec4(finalSmokeColor, smokeFactor);  
+    } else {
+        // Standard lighting for regular objects
+        LightIntensity = CalcLightIntensity(VolcanoLightPosition, Normal, VolcanoKd, VolcanoLd, EyeCoords, 1.0, 0.001, 0.0001);
+        LightIntensity += CalcLightIntensity(SeaLightPosition1, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition2, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+        LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+
+        gl_FragColor = vec4(LightIntensity, 1.0);  // Solid alpha for regular objects
+    }
+}
+
+```

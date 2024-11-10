@@ -11,13 +11,10 @@
 using namespace std;
 
 const glm::vec3 cameraDefaultPosition(-4.0f, 8.0f, 30.0f);
-//const glm::vec3 cameraDefaultPosition(0.0f, 0.0f, 0.0f);
 glm::vec3 cameraPosition = cameraDefaultPosition; // Camera position in world space
 
 const float defaultYaw = -80.f;
 const float defaultPitch = -5.f;
-//const float defaultYaw = 0.f;
-//const float defaultPitch = 0.0f;
 float yaw = defaultYaw;  // Horizontal rotation (around Y-axis)
 float pitch = defaultPitch; // Vertical rotation (around X-axis)
 
@@ -92,10 +89,10 @@ namespace keyControl
 			cameraPosition += right * currentSpeed;
 		}
 		if (keyState['q']) {
-			cameraPosition -= up * currentSpeed;
+			cameraPosition += up * currentSpeed;
 		}
 		if (keyState['e']) {
-			cameraPosition += up * currentSpeed;
+			cameraPosition -= up * currentSpeed;
 		}
 		if (keyState['r']) { // reset camera position
 			cameraPosition = cameraDefaultPosition;
@@ -104,7 +101,7 @@ namespace keyControl
 		cout << "cameraPosition: " << cameraPosition.x << " " << cameraPosition.y << " " << cameraPosition.z << endl;
 	}
 
-
+	// record the location of just pressed mouse
 	void mouseButton(int button, int state, int x, int y) {
 		if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
 			lastMouseX = x;
@@ -116,6 +113,7 @@ namespace keyControl
 		}
 	}
 
+	// update camera rotation angle accroding to mouse movement compared to last time
 	const float sensitivity = 0.3f;
 	void mouseMotion(int x, int y) {
 		int deltaX = x - lastMouseX;

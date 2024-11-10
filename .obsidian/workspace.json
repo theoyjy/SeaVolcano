@@ -1,0 +1,182 @@
+{
+  "main": {
+    "id": "a9e49f0238aa99e2",
+    "type": "split",
+    "children": [
+      {
+        "id": "59b9a1e050298cf0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "bb14782bb09b2d8a",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Idea.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Idea"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "a4fcb55b8c865179",
+    "type": "split",
+    "children": [
+      {
+        "id": "814cc70481080b41",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "dd1dd1981a881fdd",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "13ff997c594061f3",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "e8be9a4f52bbfda3",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "77ebff9a16bd8f1b",
+    "type": "split",
+    "children": [
+      {
+        "id": "6c6807a2c4e6a7b0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "ee0c907a39c56b2a",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Delivery 2 Report.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for Delivery 2 Report"
+            }
+          },
+          {
+            "id": "8df0d655c785eecf",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Delivery 2 Report.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from Delivery 2 Report"
+            }
+          },
+          {
+            "id": "f9246a127c2951e0",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "24e0e8257f086e25",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Delivery 2 Report.md"
+              },
+              "icon": "lucide-list",
+              "title": "Outline of Delivery 2 Report"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false
+    }
+  },
+  "active": "bb14782bb09b2d8a",
+  "lastOpenFiles": [
+    "LinkingAssimpReadmeLab4.pdf",
+    "FreeModelFromInternet.mp4",
+    "KeyboardControlTranslation.mkv",
+    "KeyboardControlTranslation.mp4",
+    "Delivery 1/Project Proposal and Design Document.md",
+    "Untitled.md",
+    "Delivery 1",
+    "Delivery 2/Underwater Volcano - Delivery 2 Report.pdf",
+    "Delivery 2/Underwater Volcano - Delivery 2 Report.md",
+    "Delivery 2",
+    "vt0ssv3t.hbo~",
+    "Volcano/x64/Debug/Volcano.tlog/link.18936.write.1.tlog",
+    "Volcano/x64/Debug/Volcano.tlog/link.18936.read.1.tlog",
+    "Volcano/x64/Debug/Volcano.tlog/link.18936.read.6.tlog"
+  ]
+}

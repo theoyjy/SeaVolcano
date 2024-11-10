@@ -1,0 +1,53 @@
+#version 330
+
+in vec4 EyeCoords;
+in vec3 Normal;
+
+uniform vec3 fogColor;           // Base color for fog
+uniform float density;           // Density for fog effect
+uniform vec3 viewPos;            // Camera position
+uniform bool isFog;              // Flag to indicate fog vs. regular object
+uniform float alpha;             // Alpha value for transparency control
+
+// Volcano and Sea Lights (as in your main shader)
+vec4 VolcanoLightPosition = vec4(0.0, 2.0, 0.0, 1.0);
+vec3 VolcanoLd = vec3(1.0, 1.0, 1.0);
+
+vec4 SeaLightPosition1 = vec4(-25.0, -10.0, -25.0, 1.0);
+vec4 SeaLightPosition2 = vec4(25.0, -10.0, 25.0, 1.0);
+vec4 SeaLightPosition3 = vec4(-25.0, -10.0, 25.0, 1.0);
+vec4 SeaLightPosition4 = vec4(25.0, -10.0, -25.0, 1.0);
+vec3 SeaLd = vec3(1.0, 1.0, 1.0);
+
+// Diffuse colors for volcano and sea lights
+vec3 VolcanoKd = vec3(1.0, 0.0, 0.0);
+vec3 SeaKd = vec3(0.004f, 0.361f, 0.588f);
+
+vec3 CalcLightIntensity(vec4 LightPosition, vec3 normal, vec3 Kd, vec3 Ld, vec4 eyeCoords, float constant, float linear, float quadratic) {
+    float distance = length(LightPosition.xyz - eyeCoords.xyz);
+    float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
+    vec3 s = normalize(vec3(LightPosition - eyeCoords));
+    return Ld * Kd * max(dot(s, normal), 0.0) * attenuation;
+}
+
+void main() {
+    vec3 LightIntensity;
+    // Calculate fog lighting using the same light sources
+    LightIntensity = CalcLightIntensity(VolcanoLightPosition, Normal, fogColor, VolcanoLd, EyeCoords, 1.0, 0.001, 0.0001);
+    LightIntensity += CalcLightIntensity(SeaLightPosition1, Normal, fogColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+    LightIntensity += CalcLightIntensity(SeaLightPosition2, Normal, fogColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+    LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, fogColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+    LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, fogColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+
+    if (isFog) {
+        // Fog effect calculations
+        float distance = length(viewPos - EyeCoords.xyz);
+        float fogFactor = exp(-density * distance);  // Exponential falloff
+
+        // Apply fog color blending based on fogFactor and alpha
+        vec3 finalFogColor = mix(fogColor, LightIntensity, fogFactor);
+        gl_FragColor = vec4(finalFogColor, alpha * fogFactor);  // Adjust alpha based on fog factor
+    } else {
+        gl_FragColor = vec4(LightIntensity, 1.0);  // Solid alpha for regular objects
+    }
+}

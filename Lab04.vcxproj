@@ -163,10 +163,8 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="animationVertexShader.txt" />
-    <Text Include="BoneFragmentShader.txt" />
-    <Text Include="BoneVertexShader.txt" />
-    <Text Include="ColorFragmentShader.txt" />
-    <Text Include="ColorVertexShader.txt" />
+    <Text Include="fogFragmentShader.txt" />
+    <Text Include="fogVertexShader.txt" />
     <Text Include="simpleFragmentShader.txt" />
     <Text Include="simpleVertexShader.txt" />
   </ItemGroup>

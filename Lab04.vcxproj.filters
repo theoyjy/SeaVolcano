@@ -40,6 +40,8 @@
     <Text Include="animationVertexShader.txt">
       <Filter>Source Files</Filter>
     </Text>
+    <Text Include="fogVertexShader.txt" />
+    <Text Include="fogFragmentShader.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="monkeyhead_smooth.dae">
