@@ -1,71 +1,8 @@
 **Demonstration video:** https://www.youtube.com/watch?v=53ZmWnFnnbc
-### `main.cpp`
-Main implementation:
-- The data structure of each mesh and its children meshes
-- `load_mesh()` method would load up one mesh, and its own children meshes, as well as build hierarchical relationships. Because until now, the only hierarchical animation contained is the fish which is quite simple, it only has two layer: one for parent mesh (fish body), and one layer for all the other meshes(fin, head). That is why the code only map the hierarchy to two layer relationship.
-- `generateObjectBufferMesh()` method would trigger the load process of all the models needed, and it would call a internal lambda function `SetUpModelBuffers()` to set up buffers for each mesh and recursively set up for its children meshes.
-- `display()` function would pass the `view, model, proj` for each mesh to the shader. And if it's the smoke mesh, then it would pass more variables to shader such as smoke color, camera position to adjust the transparency of the smoke
-- `updateScene()` would :
-	- update the rotation values of different meshes along the hierarchy, so they could look more realistically
-	- update each fish's translation with its own direction.
-	- update camera position by checking if listened key being pressed, in this way, different key can be pressed together to produce a combined direction.
 
+### Hierarchical Animation
+1. Data structure and global variables:
 ```cpp
-// Windows includes(For Time, IO, etc.)
-#include <windows.h>
-#include <mmsystem.h>
-#include <iostream>
-#include <string>
-#include <stdio.h>
-#include <math.h>
-#include <vector> // STL dynamic memory.
-#include <unordered_map>
-#include <cstdlib>
-#include <ctime>
-
-// OpenGL includes
-#include <GL/glew.h>
-#include <GL/freeglut.h>
-
-// Assimp includes
-#include <assimp/cimport.h> // scene importer
-#include <assimp/scene.h> // collects data
-#include <assimp/postprocess.h> // various extra operations
-
-// Project includes
-#include "maths_funcs.h"
-#include <filesystem>
-namespace fs = std::filesystem;
-
-#include <glm.hpp>
-#define GLM_ENABLE_EXPERIMENTAL
-#include <gtx/string_cast.hpp> 
-#include <gtc/type_ptr.hpp>
-#include <gtc/matrix_transform.hpp>
-#include <gtc/quaternion.hpp>
-
-#include "CameraControl.hpp"
-#include <functional>
-
-/*----------------------------------------------------------------------------
-MESH TO LOAD
-----------------------------------------------------------------------------*/
-// this mesh is a dae file format but you should be able to use any other format too, obj is typically what is used
-// put the mesh in your project directory, or provide a filepath for it here
-#define TERRAIN_MESH "Assets/terrain.fbx"
-#define SMOKE_MESH "Assets/Smoke.fbx"
-#define ANIMATION_FOLDER "Assets/animationModels/"
-
-#define TERRIAN 1
-#define SKELETON 0
-#define COLORANIMATION 0
-
-/*----------------------------------------------------------------------------
-----------------------------------------------------------------------------*/
-using namespace std;
-
-#pragma region SimpleTypes
-
 typedef struct ModelData
 {
 	size_t mPointCount = 0;
@@ -75,20 +12,23 @@ typedef struct ModelData
 	vector<glm::vec4> mColors;
 	vector<vec2> mTextureCoords;
 	glm::mat4 mLocalTransform;
+	// internal array to store hierarchical meshes for animation
 	vector<ModelData> mChildMeshes;
 
 } ModelData;
-#pragma endregion SimpleTypes
 
+// global variables:
 
-
+// time to update rotate degree
 auto startTime = std::chrono::high_resolution_clock::now();
 
+// only program
 GLuint terrianShaderProgramID;
 
 // all the meshes in the scene
 ModelData volcano_terrian_mesh;
 ModelData smoke_mesh;
+// hierarchical meshes for animation
 vector<ModelData> animation_meshes;
 
 int width = 1440;
@@ -99,21 +39,10 @@ GLfloat rotate_head = 0.0f, rotate_fin = 0.0f, rotate_body = 0.f;
 
 // whole translation for each fish model
 vector<glm::vec3> fish_translations(9, glm::vec3(0.0f));
+```
 
-#pragma region MESH LOADING
-/*----------------------------------------------------------------------------
-MESH LOADING FUNCTION
-----------------------------------------------------------------------------*/
-
-glm::mat4 ConvertToGLMMat4(const aiMatrix4x4& aiMat) {
-	return glm::mat4(
-		aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1,
-		aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2,
-		aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3,
-		aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4
-	);
-}
-
+2. `load_mesh()` method would load up one mesh, and its own children meshes, as well as build hierarchical relationships. Because until now, the only hierarchical animation contained is the fish which is quite simple, it only has two layer: one for parent mesh (fish body), and one layer for all the other meshes(fin, head). That is why the code only map the hierarchy to two layer relationship.
+```cpp
 ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
 	ModelData modelData;
 
@@ -200,127 +129,14 @@ ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
 	return modelData;
 }
 
-#pragma endregion MESH LOADING
+```
 
-// Shader Functions- click on + to expand
-#pragma region SHADER_FUNCTIONS
-char* readShaderSource(const char* shaderFile) {
-	FILE* fp;
-	fopen_s(&fp, shaderFile, "rb");
-
-	filesystem::path p(shaderFile);
-
-	if (fp == NULL) {
-		cout << "application current path " << filesystem::current_path() << endl;
-		cout << "file path " << filesystem::absolute(p) << endl;
-		return NULL;
-	}
-
-	fseek(fp, 0L, SEEK_END);
-	long size = ftell(fp);
-
-	fseek(fp, 0L, SEEK_SET);
-	char* buf = new char[size + 1];
-	fread(buf, 1, size, fp);
-	buf[size] = '\0';
-
-	fclose(fp);
-
-	return buf;
-}
-
-
-static void AddShader(GLuint ShaderProgram, const char* pShaderText, GLenum ShaderType)
-{
-	// create a shader object
-	GLuint ShaderObj = glCreateShader(ShaderType);
-
-	if (ShaderObj == 0) {
-		std::cerr << "Error creating shader..." << std::endl;
-		std::cerr << "Press enter/return to exit..." << std::endl;
-		std::cin.get();
-		exit(1);
-	}
-	const char* pShaderSource = readShaderSource(pShaderText);
-
-	// Bind the source code to the shader, this happens before compilation
-	glShaderSource(ShaderObj, 1, (const GLchar**)&pShaderSource, NULL);
-	// compile the shader and check for errors
-	glCompileShader(ShaderObj);
-	GLint success;
-	// check for shader related errors using glGetShaderiv
-	glGetShaderiv(ShaderObj, GL_COMPILE_STATUS, &success);
-	if (!success) {
-		GLchar InfoLog[1024] = { '\0' };
-		glGetShaderInfoLog(ShaderObj, 1024, NULL, InfoLog);
-		std::cerr << "Error compiling "
-			<< (ShaderType == GL_VERTEX_SHADER ? "vertex" : "fragment")
-			<< " shader program: " << InfoLog << std::endl;
-		std::cerr << "Press enter/return to exit..." << std::endl;
-		std::cin.get();
-		exit(1);
-	}
-	// Attach the compiled shader object to the program object
-	glAttachShader(ShaderProgram, ShaderObj);
-}
-
-
-GLuint CompileShaders()
-{
-	//Start the process of setting up our shaders by creating a program ID
-	//Note: we will link all the shaders together into this ID
-
-	auto linkShader = [](GLuint programID)
-		{
-			GLint Success = 0;
-			GLchar ErrorLog[1024] = { '\0' };
-			// After compiling all shader objects and attaching them to the program, we can finally link it
-			glLinkProgram(programID);
-			// check for program related errors using glGetProgramiv
-			glGetProgramiv(programID, GL_LINK_STATUS, &Success);
-			if (Success == 0) {
-				glGetProgramInfoLog(programID, sizeof(ErrorLog), NULL, ErrorLog);
-				std::cerr << "Error linking shader program: " << ErrorLog << std::endl;
-				std::cerr << "Press enter/return to exit..." << std::endl;
-				std::cin.get();
-				exit(1);
-			}
-			// program has been successfully linked but needs to be validated to check whether the program can execute given the current pipeline state
-			glValidateProgram(programID);
-			// check for program related errors using glGetProgramiv
-			glGetProgramiv(programID, GL_VALIDATE_STATUS, &Success);
-			if (!Success) {
-				glGetProgramInfoLog(programID, sizeof(ErrorLog), NULL, ErrorLog);
-				std::cerr << "Invalid shader program: " << ErrorLog << std::endl;
-				std::cerr << "Press enter/return to exit..." << std::endl;
-				std::cin.get();
-				exit(1);
-			}
-			// Finally, use the linked shader program
-			// Note: this program will stay in effect for all draw calls until you replace it with another or explicitly disable its use
-			glUseProgram(programID);
-		};
-
-	terrianShaderProgramID = glCreateProgram();
-	if (terrianShaderProgramID == 0) {
-		std::cerr << "Error creating shader program..." << std::endl;
-		std::cerr << "Press enter/return to exit..." << std::endl;
-		std::cin.get();
-		exit(1);
-	}
-	AddShader(terrianShaderProgramID, "simpleVertexShader.txt", GL_VERTEX_SHADER);
-	AddShader(terrianShaderProgramID, "simpleFragmentShader.txt", GL_FRAGMENT_SHADER);
-	linkShader(terrianShaderProgramID);
-	return 1;
-}
-#pragma endregion SHADER_FUNCTIONS
-
-// VBO Functions - click on + to expand
-
-
-
-#pragma region VBO_FUNCTIONS
-
+3. `generateObjectBufferMesh()` method would:
+	1. Find all the hierarchical animation model paths
+	2. Load up all the meshes: terrain, smoke, animations
+	3. Set up buffers of all the models needed, and it would call a internal lambda function `SetUpModelBuffers()` to set up buffers for each mesh and recursively set up buffers for its children meshes.
+```cpp
+// find all the animation mmodel file paths first
 vector<string> GetAllAnimationModelPath()
 {
 	vector<string> animationModelPaths;
@@ -365,6 +181,7 @@ void generateObjectBufferMesh() {
 	for (size_t i = 0; i < animationModelPaths.size(); i++)
 	{
 		animation_meshes.push_back(load_mesh(animationModelPaths[i].c_str(), true));
+	
 	}
 
 	// Set up the VAO and VBOs for terrain and all animation models
@@ -376,6 +193,7 @@ void generateObjectBufferMesh() {
 		exit(1);
 	}
 
+	// Set up buffers for each mesh and its children.
 	function<void(ModelData&)> SetUpModelBuffers = [&](ModelData& model) {
 		glGenVertexArrays(1, &model.mVao);
 		glBindVertexArray(model.mVao);
@@ -397,6 +215,7 @@ void generateObjectBufferMesh() {
 		glBindVertexArray(0); // unbind VAO
 		glBindBuffer(GL_ARRAY_BUFFER, 0); // unbind VBO
 
+		// set up buffers for its children
 		for (int j = 0; j < model.mChildMeshes.size(); ++j)
 		{
 			SetUpModelBuffers(model.mChildMeshes[j]);
@@ -404,25 +223,75 @@ void generateObjectBufferMesh() {
 	};
 
 	glUseProgram(terrianShaderProgramID);
+
+	// set up buffers for terrain
 	SetUpModelBuffers(volcano_terrian_mesh);
+
+	// set up buffers for smoke
 	SetUpModelBuffers(smoke_mesh);
+	
+	// set up buffers for each animation mesh
 	for (int i = 0; i < animationModelPaths.size(); ++i) {
 		SetUpModelBuffers(animation_meshes[i]);
 	}
 
 	cout << "finish generate object buffer mesh\n";
 }
-#pragma endregion VBO_FUNCTIONS
+```
 
-void renderBitmapText(float x, float y, void* font, const char* text) {
-	glRasterPos2f(x, y);
-	while (*text) {
-		glutBitmapCharacter(font, *text);
-		text++;
+4. `updateScene()` would :
+	- update the rotation values of different meshes along the hierarchy, so they could look more realistically
+	- update each fish's translation heading towards its own direction.
+	- update camera position by checking if listened key being pressed, in this way, different key can be pressed together to produce a combined direction.
+
+```cpp
+const float PI = 3.14159265358979323846f;
+
+// the heading direction of each fish array
+const vector<glm::vec3> fish_translate_directions = { 
+	glm::vec3(0.0f, 0.0f, -0.1f), 
+	glm::vec3(0.1f, 0.0f, -0.1f),
+	glm::vec3(0.1f, 0.0f, -0.1f),
+	glm::vec3(-0.1f, 0.0f, -0.1f),
+	glm::vec3(-0.1f, 0.0f, 0.0f),
+	glm::vec3(0.1f, 0.0f, -0.1f),
+	glm::vec3(0.1f, 0.0f, -0.1f),
+	glm::vec3(-0.1f, 0.0f, 0.1f),
+	glm::vec3(-0.1f, 0.0f, -0.1f),
+};
+
+void updateScene() {
+	// calculate time elapsed in seconds
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<float> elapsedTime = currentTime - startTime;
+    float timeInSeconds = elapsedTime.count(); // Get elapsed time in seconds
+
+	// Update roatetion of fin and head for fishes  in a sinusoidal pattern
+    rotate_fin = 0.4f * sin(timeInSeconds);
+	rotate_body = 0.4f * sin(timeInSeconds + PI / 4.0f);
+    rotate_head = 0.4f * sin(timeInSeconds + PI / 2.0f);
+
+	// update translation for each fish
+	for(int i = 0; i < fish_translations.size(); ++i)
+	{
+		fish_translations[i] += fish_translate_directions[i] * 0.01f;
 	}
+	
+	// update camera poistion and location based on key status
+    keyControl::updateCameraPosition();
+
+    // Draw the next frame
+    glutPostRedisplay();
 }
+```
+
+5. `display()` function would pass the `view, model, proj` for each mesh to the shader, and then:
+	- For the hierarchical models, it would iterate all the animation models and recursively call inside function `UpdateNormalMeshUniforms()` to update its own mesh and children meshes uniform variables.
+	- The terrain mesh doesn't have hierarchy, so the internal recursion would not happen.
+	- And if it's the smoke mesh, then it would pass more variables to shader such as smoke color and camera position to adjust the transparency of the smoke.
 
 
+```cpp
 void display() {
 
 	// tell GL to only draw onto a pixel if the shape is closer to the viewer
@@ -453,8 +322,7 @@ void display() {
 	glm::mat4 view = glm::lookAt(cameraPosition, cameraTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 
 
-
-	// update terrain uniforms & draw
+	// update mesh uniforms & draw function
 	function<void(const ModelData&, glm::mat4&, bool)> UpdateNormalMeshUniforms = [&](const ModelData& mesh, glm::mat4& modelMatrix, bool isSmoke) {
 		glBindVertexArray(mesh.mVao);
 		glUniformMatrix4fv(proj_mat_location, 1, GL_FALSE, persp_proj.m);
@@ -465,6 +333,7 @@ void display() {
 	};
 
 	glm::mat4 model(1.0f);
+	
 	// Draw terrain
 	UpdateNormalMeshUniforms(volcano_terrian_mesh, model, false);
 
@@ -474,7 +343,7 @@ void display() {
 	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "viewPos"), cameraPosition.x, cameraPosition.y, cameraPosition.z);
 	UpdateNormalMeshUniforms(smoke_mesh, model, true);
 
-	// Draw animation models
+	// Draw animation meshes with its children meshes
 	for (int i = 0; i < animation_meshes.size(); ++i) 
 	{
 		// translate the root mesh
@@ -508,7 +377,7 @@ void display() {
 		}
 	}
 
-
+	// display key features of the current state of the work on the screen
 	renderBitmapText(-1.0, 0.9, GLUT_BITMAP_HELVETICA_18, "The scene consists of a shining volcano, swiming fishes, smoke out of volcano, rocks, coral");
 	renderBitmapText(-1.0, 0.85, GLUT_BITMAP_HELVETICA_18, "All the fishes are moving towards its heading direction");
 	renderBitmapText(-1.0, 0.8, GLUT_BITMAP_HELVETICA_18, "Each Fish contains hierarchical meshes that fin and tail would move relatively to its body");
@@ -517,125 +386,43 @@ void display() {
 
 	glutSwapBuffers();
 }
-
-
-const float PI = 3.14159265358979323846f;
-const vector<glm::vec3> fish_translate_directions = { 
-	glm::vec3(0.0f, 0.0f, -0.1f), 
-	glm::vec3(0.1f, 0.0f, -0.1f),
-	glm::vec3(0.1f, 0.0f, -0.1f),
-	glm::vec3(-0.1f, 0.0f, -0.1f),
-	glm::vec3(-0.1f, 0.0f, 0.0f),
-	glm::vec3(0.1f, 0.0f, -0.1f),
-	glm::vec3(0.1f, 0.0f, -0.1f),
-	glm::vec3(-0.1f, 0.0f, 0.1f),
-	glm::vec3(-0.1f, 0.0f, -0.1f),
-};
-
-void updateScene() {
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<float> elapsedTime = currentTime - startTime;
-    float timeInSeconds = elapsedTime.count(); // Get elapsed time in seconds
-
-	// Fin and head of a fish rotate in a sinusoidal pattern
-    rotate_fin = 0.4f * sin(timeInSeconds);
-	rotate_body = 0.4f * sin(timeInSeconds + PI / 4.0f);
-    rotate_head = 0.4f * sin(timeInSeconds + PI / 2.0f);
-
-	for(int i = 0; i < fish_translations.size(); ++i)
-	{
-		fish_translations[i] += fish_translate_directions[i] * 0.01f;
-	}
-
-    keyControl::updateCameraPosition();
-
-    // Draw the next frame
-    glutPostRedisplay();
-}
-
-
-void init()
-{
-	// Set up the shaders
-	GLuint shaderProgramID = CompileShaders();
-	// load mesh into a vertex buffer array
-	generateObjectBufferMesh();
-
-}
-
-
-int main(int argc, char** argv) {
-
-	// Set up the window
-	glutInit(&argc, argv);
-	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
-	glutInitWindowSize(width, height);
-	glutCreateWindow("Underwater volcano");
-
-	// Tell glut where the display function is
-	glutDisplayFunc(display);
-	glutIdleFunc(updateScene);
-
-	glutKeyboardFunc(keyControl::keypress);
-	glutKeyboardUpFunc(keyControl::keyRelease);
-	glutSpecialFunc(keyControl::specialKeypress);
-	glutSpecialUpFunc(keyControl::specialKeyRelease);
-	glutMouseFunc(keyControl::mouseButton);
-	glutMotionFunc(keyControl::mouseMotion);
-
-	// A call to glewInit() must be done after glut is initialized!
-	GLenum res = glewInit();
-	// Check for any errors
-	if (res != GLEW_OK) {
-		fprintf(stderr, "Error: '%s'\n", glewGetErrorString(res));
-		return 1;
-	}
-	// Set up your objects and shaders
-	init();
-	// Begin infinite event loop
-	glutMainLoop();
-	return 0;
-}
 ```
 
-### `CameraControl.hpp`
-Main implementation:
-- Default values of camera position and rotations to initialize the camera and also support to reset the camera position(Key: R) and rotation(click Right mouse) 
-- A map that records the keys being pressed, so it can combine all the inputs when updating the camera position.
-- When updating the camera position, it would retrieve the forward, up, right directions of current camera, so that the position can be updating accordingly.
-- Listen to mouse press and move so that user can adjust the camera rotation by pressing and dragging the left mouse.
+### Camera Control
 
+1. Default values of camera position and rotations to initialize the camera and also support to reset the camera position(Key: R) and rotation(click Right mouse) 
 ```cpp
-#include <unordered_map>
-#include <iostream>
-#include <GL/glut.h>
-#include <GL/freeglut.h>
-
-#include <glm.hpp>
-#include <gtc/type_ptr.hpp>
-#include <gtc/matrix_transform.hpp>
-#include <gtc/quaternion.hpp>
-
-using namespace std;
-
+// camera default values
 const glm::vec3 cameraDefaultPosition(-4.0f, 8.0f, 30.0f);
-glm::vec3 cameraPosition = cameraDefaultPosition; // Camera position in world space
-
 const float defaultYaw = -80.f;
 const float defaultPitch = -5.f;
+
+// camera realtime position
+glm::vec3 cameraPosition = cameraDefaultPosition; // Camera position in world space
+
+// camera rotation
 float yaw = defaultYaw;  // Horizontal rotation (around Y-axis)
 float pitch = defaultPitch; // Vertical rotation (around X-axis)
 
-// camera and keyboard, mouse input
+// last pressed mouse location
 int lastMouseX = 0, lastMouseY = 0;
-float angleX = 0.0f, angleY = 0.0f;
+```
 
+2.  A map that records the keys being pressed, so it can combine all the inputs when updating the camera position.  And also record the special key `shift` status
+```cpp
+namespace keyControl
+{
+std::unordered_map<unsigned char, bool> keyState;
+bool isShiftPressed = false; // record is shift key pressed
+bool isTranslationTriggered = false; // record is translation triggered
+}
+```
+
+3. Listen to key events and mouse events to update the map and other status.
+```cpp
 namespace keyControl
 {
 	// record the state of the keyboard
-	std::unordered_map<unsigned char, bool> keyState;
-	bool isShiftPressed = false; // record is shift key pressed
-	bool isTranslationTriggered = false; // record is translation triggered
 
 	// update kep pressed
 	void keypress(unsigned char key, int x, int y) {
@@ -664,51 +451,6 @@ namespace keyControl
 			isShiftPressed = false;
 		}
 	}
-
-	const float normalSpeed = 0.05f;
-	// update camera position
-	void updateCameraPosition() {
-
-		if (!isTranslationTriggered)
-			return;
-		// update speed based on shift key
-		float currentSpeed = isShiftPressed ? (normalSpeed * 2) : normalSpeed;
-
-		// calculate the forward, right, up vectors of camera
-		glm::vec3 forward(0.0);
-		forward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-		forward.y = sin(glm::radians(pitch));
-		forward.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-		forward = glm::normalize(forward);
-		glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
-		glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-
-		// update camera position
-		if (keyState['w']) {
-			cameraPosition += forward * currentSpeed;
-		}
-		if (keyState['s']) {
-			cameraPosition -= forward * currentSpeed;
-		}
-		if (keyState['a']) {
-			cameraPosition -= right * currentSpeed;
-		}
-		if (keyState['d']) {
-			cameraPosition += right * currentSpeed;
-		}
-		if (keyState['q']) {
-			cameraPosition += up * currentSpeed;
-		}
-		if (keyState['e']) {
-			cameraPosition -= up * currentSpeed;
-		}
-		if (keyState['r']) { // reset camera position
-			cameraPosition = cameraDefaultPosition;
-		}
-
-		cout << "cameraPosition: " << cameraPosition.x << " " << cameraPosition.y << " " << cameraPosition.z << endl;
-	}
-
 	// record the location of just pressed mouse
 	void mouseButton(int button, int state, int x, int y) {
 		if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
@@ -720,30 +462,92 @@ namespace keyControl
 			pitch = defaultPitch;
 		}
 	}
+}
+```
 
-	// update camera rotation angle accroding to mouse movement compared to last time
-	const float sensitivity = 0.3f;
-	void mouseMotion(int x, int y) {
-		int deltaX = x - lastMouseX;
-		int deltaY = y - lastMouseY;
 
-		lastMouseX = x;
-		lastMouseY = y;
+4. Updating the camera position:
+	1. Retrieving the forward, up, right directions of current camera, so that the position can be updating accordingly
+	2. Fetching the key pressed status and calculating the camera position
+```cpp
+namespace keyControl
+{
+const float normalSpeed = 0.05f;
+	// update camera position
+void updateCameraPosition() {
 
-		yaw += deltaX * sensitivity;
-		pitch -= deltaY * sensitivity;
+	if (!isTranslationTriggered)
+		return;
+	// update speed based on shift key
+	float currentSpeed = isShiftPressed ? (normalSpeed * 2) : normalSpeed;
 
-		cout << "deltaX: " << deltaX << " deltaY: " << deltaY << endl;
-		cout << "yaw: " << yaw << " pitch: " << pitch << endl;
+	// calculate the forward, right, up vectors of camera
+	glm::vec3 forward(0.0);
+	forward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+	forward.y = sin(glm::radians(pitch));
+	forward.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+	forward = glm::normalize(forward);
+	glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+	glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
-		// Constrain the pitch to avoid gimbal lock
-		if (pitch > 87.0f) pitch = 87.0f;
-		if (pitch < -87.0f) pitch = -87.0f;
-
-		glutPostRedisplay();
+	// update camera position
+	if (keyState['w']) {
+		cameraPosition += forward * currentSpeed;
+	}
+	if (keyState['s']) {
+		cameraPosition -= forward * currentSpeed;
+	}
+	if (keyState['a']) {
+		cameraPosition -= right * currentSpeed;
+	}
+	if (keyState['d']) {
+		cameraPosition += right * currentSpeed;
+	}
+	if (keyState['q']) {
+		cameraPosition += up * currentSpeed;
+	}
+	if (keyState['e']) {
+		cameraPosition -= up * currentSpeed;
+	}
+	if (keyState['r']) { // reset camera position
+		cameraPosition = cameraDefaultPosition;
 	}
 
-};
+	cout << "cameraPosition: " << cameraPosition.x << " " << cameraPosition.y << " " << cameraPosition.z << endl;
+}
+}
+```
+
+5. Update camera rotation according to last pressed mouse location  
+```cpp
+namespace keyControl
+{
+// update camera rotation angle accroding to mouse movement compared to last time
+const float sensitivity = 0.3f;
+void mouseMotion(int x, int y) {
+
+	// calculate delta movement
+	int deltaX = x - lastMouseX;
+	int deltaY = y - lastMouseY;
+
+	// update last pressed location
+	lastMouseX = x;
+	lastMouseY = y;
+
+	// update rotation angle
+	yaw += deltaX * sensitivity;
+	pitch -= deltaY * sensitivity;
+
+	cout << "deltaX: " << deltaX << " deltaY: " << deltaY << endl;
+	cout << "yaw: " << yaw << " pitch: " << pitch << endl;
+
+	// Constrain the pitch to avoid gimbal lock
+	if (pitch > 87.0f) pitch = 87.0f;
+	if (pitch < -87.0f) pitch = -87.0f;
+
+	glutPostRedisplay();
+}
+}
 ```
 
 ### Vertex shader
@@ -808,6 +612,7 @@ vec3 SeaLd = vec3(1.0, 1.0, 1.0);
 vec3 VolcanoKd = vec3(1.0, 0.0, 0.0);
 vec3 SeaKd = vec3(0.004f, 0.361f, 0.588f);
 
+// calculte light of each light setting up in the scene
 vec3 CalcLightIntensity(vec4 LightPosition, vec3 normal, vec3 Kd, vec3 Ld, vec4 eyeCoords, float constant, float linear, float quadratic) {
     float distance = length(LightPosition.xyz - eyeCoords.xyz);
     float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
@@ -844,5 +649,5 @@ void main() {
         gl_FragColor = vec4(LightIntensity, 1.0);  // Solid alpha for regular objects
     }
 }
-
 ```
+

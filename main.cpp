@@ -101,6 +101,13 @@ glm::mat4 ConvertToGLMMat4(const aiMatrix4x4& aiMat) {
 	);
 }
 
+void LoadTexture(const std::string& texturePath) {
+	// Load texture here
+	std::cout << "Loading texture: " << texturePath << std::endl;
+	// TODO: Implement texture loading
+
+}
+
 ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
 	ModelData modelData;
 
@@ -125,7 +132,7 @@ ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
 	printf("  %i materials\n", scene->mNumMaterials);
 	printf("  %i meshes\n", scene->mNumMeshes);
 	printf("  %i textures\n", scene->mNumTextures);
-	printf("  %i animation\n", scene->mAnimations);
+	//printf("  %i animation\n", scene->mAnimations);
 
 	for (unsigned int m_i = 0; m_i < scene->mNumMeshes; m_i++) {
 		const aiMesh* mesh = scene->mMeshes[m_i];
@@ -180,6 +187,47 @@ ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
 		}
 
 		modelPtr->mPointCount += mesh->mNumVertices;
+
+		for(unsigned int i = 0; i < scene->mNumMaterials; i++)
+		{
+			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+
+			// find the texture path in the material properties
+			for (unsigned int i = 0; i < material->mNumProperties; ++i) {
+				aiMaterialProperty* prop = material->mProperties[i];
+
+				// Check for the $tex.file or $raw.DiffuseColor|file property
+				if (std::string(prop->mKey.C_Str()) == "$tex.file" ||
+					std::string(prop->mKey.C_Str()) == "$raw.DiffuseColor|file") {
+
+					std::string rawPath(prop->mData, prop->mData + prop->mDataLength);
+					std::cout << "Raw texture path: " << rawPath << std::endl;
+
+					// Remove the unwanted prefix (first character '8')
+					std::string texturePath = rawPath.substr(1); // Remove first character
+					std::cout << "Cleaned texture path: " << texturePath << std::endl;
+
+					// Use the cleaned path for loading the texture
+					LoadTexture(texturePath); // TODO: Implement this function
+				}
+			}
+
+			aiString name;
+			material->Get(AI_MATKEY_NAME, name);
+			printf("Material name: %s\n", name.C_Str());
+			aiColor3D color(0.f, 0.f, 0.f);
+			material->Get(AI_MATKEY_COLOR_DIFFUSE, color);
+			printf("Diffuse color: %f %f %f\n", color.r, color.g, color.b);
+			material->Get(AI_MATKEY_COLOR_AMBIENT, color);
+			printf("Ambient color: %f %f %f\n", color.r, color.g, color.b);
+			material->Get(AI_MATKEY_COLOR_SPECULAR, color);
+			printf("Specular color: %f %f %f\n", color.r, color.g, color.b);
+			material->Get(AI_MATKEY_COLOR_EMISSIVE, color);
+			printf("Emissive color: %f %f %f\n", color.r, color.g, color.b);
+			float shininess;
+			material->Get(AI_MATKEY_SHININESS, shininess);
+			printf("Shininess: %f\n", shininess);
+		}
 	}
 
 	aiReleaseImport(scene);
@@ -340,10 +388,10 @@ void generateObjectBufferMesh() {
 	
 
 	// load terrain mesh
-	volcano_terrian_mesh = load_mesh(TERRAIN_MESH, false);
+	//volcano_terrian_mesh = load_mesh(TERRAIN_MESH, false);
 
 	// load smoke mesh
-	smoke_mesh = load_mesh(SMOKE_MESH, false);
+	//smoke_mesh = load_mesh(SMOKE_MESH, false);
 
 	// get all the animation model paths
 	vector<string> animationModelPaths = GetAllAnimationModelPath();
@@ -498,7 +546,7 @@ void display() {
 
 	renderBitmapText(-1.0, 0.9, GLUT_BITMAP_HELVETICA_18, "The scene consists of a shining volcano, swiming fishes, smoke out of volcano, rocks, coral");
 	renderBitmapText(-1.0, 0.85, GLUT_BITMAP_HELVETICA_18, "All the fishes are moving towards its heading direction");
-	renderBitmapText(-1.0, 0.8, GLUT_BITMAP_HELVETICA_18, "Each Fish contains hierarchical meshes that fin and tail would move relatively to its body");
+	renderBitmapText(-1.0, 0.8, GLUT_BITMAP_HELVETICA_18, "Each Fish contains hierarchical meshes that fin and head would move relatively to its body");
 	renderBitmapText(-1.0, 0.75, GLUT_BITMAP_HELVETICA_18, "Key Control : W(forward) S(backward) A(left) D(right) Q(upward) E(downward). Shift + Key Control : Speed up");
 	renderBitmapText(-1.0, 0.7, GLUT_BITMAP_HELVETICA_18, "Mouse Control : Left click and drag to control camera's yaw and pitch");
 
