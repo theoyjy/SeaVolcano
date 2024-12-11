@@ -3,10 +3,11 @@
 int width = 1440;
 int height = 720;
 
-glm::vec3 sunlightDir;
-glm::vec3 sunlightColor;
-float ambientIntensity;
+// illumination
+glm::vec3 lightPosition;
+glm::vec3 lightDirection;
+float depthFalloff;
+float causticIntensity;
 
-float waterDepth = 10.f;
-glm::vec3 waterColor;
-float lightDecay;
+glm::vec3 lightSpecular;
+glm::vec3 lightDiffuse;

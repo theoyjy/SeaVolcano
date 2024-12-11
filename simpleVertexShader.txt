@@ -7,6 +7,7 @@ layout (location = 2) in vec2 tex_coords;
 out vec4 EyeCoords;
 out vec3 Normal;
 out vec2 TexCoords;
+out vec3 FragPos;
 
 uniform mat4 view;
 uniform mat4 proj;
@@ -14,17 +15,18 @@ uniform mat4 model;
 
 void main() {
 
-    // Model-view matrix and normal transformation
+    // Pass texture coordinates
     TexCoords = tex_coords;
-    mat4 ModelViewMatrix = view * model;
-    mat3 NormalMatrix = mat3(ModelViewMatrix);
-    
-    // Transform normal to view space and normalize it
-    Normal = normalize(NormalMatrix * vertex_normal);
-    
-    // Transform vertex position to view space
-    EyeCoords = ModelViewMatrix * vec4(vertex_position, 1.0);
 
-    // Convert position to clip coordinates and pass along
-    gl_Position = proj * view * model * vec4(vertex_position, 1.0);
+    // Model-view matrix and normal transformation
+    mat4 ModelViewMatrix = view * model;
+    mat3 NormalMatrix = mat3(transpose(inverse(ModelViewMatrix)));
+
+    // Transform vertex position and normal to view space
+    Normal = normalize(NormalMatrix * vertex_normal);
+    EyeCoords = ModelViewMatrix * vec4(vertex_position, 1.0);
+    FragPos = vec3(model * vec4(vertex_position, 1.0));
+
+    // Convert position to clip coordinates
+    gl_Position = proj * EyeCoords;
 }

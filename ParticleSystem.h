@@ -116,7 +116,7 @@ public:
     // Initialize OpenGL
     void initOpenGL() {
 
-        particleTexture = TextureManager::Instance()->LoadTexture("texture.png");
+        particleTexture = TextureManager::Instance()->LoadTexture("Assets/texture.png");
         // Enable blending
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

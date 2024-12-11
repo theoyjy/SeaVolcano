@@ -7,16 +7,16 @@ layout (location = 3) in float instanceLifetimePercent; // Lifetime of particle
 
 out vec2 TexCoords;
 out float LifetimePercent;
+out vec3 FragPos; // World-space position of the particle
+
 uniform mat4 projection;
 uniform mat4 view;
 uniform float lifetime;
 
-
 void main() {
-float currentScale = mix(150, 20, pow(instanceLifetimePercent, 2.0)); // 对时间平方
-
-
+    float currentScale = mix(150, 20, pow(instanceLifetimePercent, 2.0));
     TexCoords = texCoords;
-    gl_Position = projection * view * vec4(vertex*currentScale  + instanceOffset, 1.0);
+    gl_Position = projection * view * vec4(vertex * currentScale + instanceOffset, 1.0);
     LifetimePercent = instanceLifetimePercent;
+    FragPos = instanceOffset; // Pass world-space position
 }

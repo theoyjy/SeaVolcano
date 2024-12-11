@@ -1,15 +1,42 @@
 #version 330 core
 
 in vec2 TexCoords;
-out vec4 FragColor;
 in float LifetimePercent;
+in vec3 FragPos; // World-space position of the particle
+
+out vec4 FragColor;
 
 uniform sampler2D particleTexture;
 uniform vec4 particleColor;
 
+// Red light uniforms
+const vec3 volcanoPosition = vec3(2.0, 35.0, 2.0); // Volcano mouth position
+const vec3 redLightDirection = vec3(0.0, 1.0, 0.0); // Upward direction
+const vec3 redLightColor = vec3(1.0, 0.0, 0.0);     // Intense red color
+const float redLightFalloff = 0.1f;               // Slower falloff
+const float redLightIntensity = 10.0f;             // Higher intensity
+const float beamWidth = 0.5f;                      // Wider beam
+
 void main() {
-    float alpha = pow(LifetimePercent, 0.5); // Fade out faster at the end
+    // Sample particle texture and apply alpha fading
+    float alpha = pow(LifetimePercent, 0.5); // Fade out faster near the end
     vec4 texColor = texture(particleTexture, TexCoords) * vec4(1.0, 1.0, 1.0, alpha);
     if (texColor.a < 0.1) discard; // Optional: Discard low alpha pixels
-    FragColor = texColor * particleColor;
+
+    // Calculate direction to volcano
+    vec3 toVolcano = normalize(FragPos - volcanoPosition);
+
+    // Calculate alignment (cosine of angle)
+    float alignment = dot(toVolcano, redLightDirection);
+
+    // Beam effect using smoothstep
+    float beamEffect = smoothstep(1.0 - beamWidth, 1.0, alignment);
+
+    // Apply red light with beam effect
+    float distanceToVolcano = length(FragPos - volcanoPosition);
+    float falloff = exp(-distanceToVolcano * redLightFalloff);
+    vec3 redLight = redLightColor * redLightIntensity * beamEffect * falloff;
+
+    // Combine particle color with red light
+    FragColor = vec4((texColor.rgb * particleColor.rgb + redLight) * alpha, texColor.a * alpha);
 }
