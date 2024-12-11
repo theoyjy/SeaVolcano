@@ -157,16 +157,26 @@
   <ItemGroup>
     <ClInclude Include="CameraControl.hpp" />
     <ClInclude Include="maths_funcs.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="monkeyhead_smooth.dae" />
+    <ClInclude Include="ParticleSystem.h" />
+    <ClInclude Include="ProgramSetting.h" />
+    <ClInclude Include="ShaderUtility.h" />
+    <ClInclude Include="stb_image.h" />
+    <ClInclude Include="TextureManager.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="animationVertexShader.txt" />
     <Text Include="fogFragmentShader.txt" />
     <Text Include="fogVertexShader.txt" />
+    <Text Include="particleFragmentShader.txt" />
+    <Text Include="particleVertexSharder.txt" />
     <Text Include="simpleFragmentShader.txt" />
     <Text Include="simpleVertexShader.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="particleFragmentShader.txt" />
+    <Content Include="particleVertexSharder.txt" />
+    <Content Include="Shaders\fragmentShader.glsl" />
+    <Content Include="Shaders\vertexShader.glsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

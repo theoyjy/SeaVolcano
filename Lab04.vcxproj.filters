@@ -29,23 +29,43 @@
     <ClInclude Include="CameraControl.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ParticleSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ProgramSetting.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ShaderUtility.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="stb_image.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TextureManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="simpleVertexShader.txt">
-      <Filter>Source Files</Filter>
+    <Text Include="particleVertexSharder.txt">
+      <Filter>Resource Files</Filter>
     </Text>
-    <Text Include="simpleFragmentShader.txt">
-      <Filter>Source Files</Filter>
+    <Text Include="particleFragmentShader.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
+    <Text Include="fogFragmentShader.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
+    <Text Include="fogVertexShader.txt">
+      <Filter>Resource Files</Filter>
     </Text>
     <Text Include="animationVertexShader.txt">
-      <Filter>Source Files</Filter>
+      <Filter>Resource Files</Filter>
     </Text>
-    <Text Include="fogVertexShader.txt" />
-    <Text Include="fogFragmentShader.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="monkeyhead_smooth.dae">
-      <Filter>Source Files</Filter>
-    </None>
+    <Text Include="simpleVertexShader.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
+    <Text Include="simpleFragmentShader.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
   </ItemGroup>
 </Project>

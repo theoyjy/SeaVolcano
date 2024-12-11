@@ -2,59 +2,47 @@
 
 in vec4 EyeCoords;
 in vec3 Normal;
+in vec2 TexCoords;
 
-uniform vec3 smokeColor;           // Base color for fog
-uniform float density;           // Density for fog effect
 uniform vec3 viewPos;            // Camera position
-uniform bool isSmoke;              // Flag to indicate fog vs. regular object
+uniform sampler2D texture1;      // Texture sampler
 
-// Volcano and Sea Lights
-vec4 VolcanoLightPosition = vec4(0.0, 2.0, 0.0, 1.0);
-vec3 VolcanoLd = vec3(1.0, 1.0, 1.0);
+// Sunlight properties
+uniform vec3 sunlightDir;        // Direction of sunlight (normalized)
+uniform vec3 sunlightColor;      // Color of sunlight
+uniform float ambientIntensity;       // Ambient light intensity
 
-vec4 SeaLightPosition1 = vec4(-25.0, -10.0, -25.0, 1.0);
-vec4 SeaLightPosition2 = vec4(25.0, -10.0, 25.0, 1.0);
-vec4 SeaLightPosition3 = vec4(-25.0, -10.0, 25.0, 1.0);
-vec4 SeaLightPosition4 = vec4(25.0, -10.0, -25.0, 1.0);
-vec3 SeaLd = vec3(1.0, 1.0, 1.0);
-
-// Diffuse colors for volcano and sea lights
-vec3 VolcanoKd = vec3(1.0, 0.0, 0.0);
-vec3 SeaKd = vec3(0.004f, 0.361f, 0.588f);
-
-vec3 CalcLightIntensity(vec4 LightPosition, vec3 normal, vec3 Kd, vec3 Ld, vec4 eyeCoords, float constant, float linear, float quadratic) {
-    float distance = length(LightPosition.xyz - eyeCoords.xyz);
-    float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
-    vec3 s = normalize(vec3(LightPosition - eyeCoords));
-    return Ld * Kd * max(dot(s, normal), 0.0) * attenuation;
-}
+// Underwater light attenuation
+uniform float waterDepth;        // Maximum depth for attenuation
+uniform vec3 waterColor;         // Water color for light absorption
+uniform float lightDecay;        // Light decay factor underwater
 
 void main() {
-    vec3 LightIntensity;
+    // Normalize the normal vector
+    vec3 norm = normalize(Normal);
 
-    if (isSmoke) {
-        // Smoke effect calculations
-        float distance = length(viewPos - EyeCoords.xyz);
-        float smokeFactor = exp(-density * distance);  // Exponential falloff
+    // Compute diffuse lighting (Lambertian reflection)
+    float diff = max(dot(-sunlightDir, norm), 0.0);
+    vec3 diffuse = diff * sunlightColor;
 
-        // Calculate smoke lighting using the same light sources
-        LightIntensity = CalcLightIntensity(VolcanoLightPosition, Normal, smokeColor, VolcanoLd, EyeCoords, 1.0, 0.001, 0.0001);
-        LightIntensity += CalcLightIntensity(SeaLightPosition1, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
-        LightIntensity += CalcLightIntensity(SeaLightPosition2, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
-        LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
-        LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, smokeColor, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+    // Compute view direction and specular highlights (Phong reflection)
+    vec3 viewDir = normalize(viewPos - EyeCoords.xyz);
+    vec3 reflectDir = reflect(sunlightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0); // Shininess factor
+    vec3 specular = spec * sunlightColor;
 
-        // Apply smoke color blending based on smokeFactor
-        vec3 finalSmokeColor = mix(smokeColor, LightIntensity, smokeFactor);
-        gl_FragColor = vec4(finalSmokeColor, smokeFactor);  
-    } else {
-        // Standard lighting for regular objects
-        LightIntensity = CalcLightIntensity(VolcanoLightPosition, Normal, VolcanoKd, VolcanoLd, EyeCoords, 1.0, 0.001, 0.0001);
-        LightIntensity += CalcLightIntensity(SeaLightPosition1, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
-        LightIntensity += CalcLightIntensity(SeaLightPosition2, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
-        LightIntensity += CalcLightIntensity(SeaLightPosition3, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
-        LightIntensity += CalcLightIntensity(SeaLightPosition4, Normal, SeaKd, SeaLd, EyeCoords, 1.0, 0.0025, 0.002);
+    // Compute depth-based attenuation
+    float depthFactor = clamp((EyeCoords.y + waterDepth) / waterDepth, 0.0, 1.0);
+    vec3 attenuatedLight = mix(waterColor, sunlightColor, depthFactor) * exp(-lightDecay * (1.0 - depthFactor));
 
-        gl_FragColor = vec4(LightIntensity, 1.0);  // Solid alpha for regular objects
-    }
+    const vec3 baseAmbientColor = vec3(0.3, 0.3, 0.4); // Base ambient color
+
+    // Combine ambient, diffuse, and specular lighting with attenuation
+    vec3 lighting = baseAmbientColor * ambientIntensity + (diffuse + specular) * 1.f;
+
+    // Sample the texture color and apply lighting
+    vec4 texColor = texture(texture1, TexCoords);
+    // gl_FragColor = vec4(lighting * texColor.rgb, texColor.a);
+    gl_FragColor = vec4(vec3(diff) * texColor.rgb, 1.0); // Diffuse contribution as grayscale
+
 }

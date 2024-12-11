@@ -11,10 +11,12 @@
             "id": "3c0706983397d8f7",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
-              "icon": "lucide-file",
-              "title": "New tab"
+              "type": "pdf",
+              "state": {
+                "file": "Delivery 2/Underwater Volcano - Delivery 2 Report.pdf"
+              },
+              "icon": "lucide-file-text",
+              "title": "Underwater Volcano - Delivery 2 Report"
             }
           }
         ]
@@ -158,21 +160,22 @@
       "command-palette:Open command palette": false
     }
   },
-  "active": "dd1dd1981a881fdd",
+  "active": "3c0706983397d8f7",
   "lastOpenFiles": [
-    "Delivery 2/Underwater Volcano - Delivery 2 Report.md",
-    "Volcano/x64/Debug/Volcano.tlog/link.read.2.tlog",
+    "TextureManager.h~",
+    "main.cpp~",
+    "Lab04.vcxproj~",
+    "TextureManager.h",
+    "stb_image.h",
     "Volcano/x64/Debug/main.obj",
     "Volcano/x64/Debug/Volcano.tlog/unsuccessfulbuild",
+    "Volcano/x64/Debug/Volcano.tlog/link.read.2.tlog",
+    "Volcano/x64/Debug/Volcano.tlog/link.29480.write.1.tlog",
+    "Volcano/x64/Debug/Volcano.tlog/link.29480.read.1.tlog",
+    "Volcano/x64/Debug/Volcano.tlog/link.29480.read.6.tlog",
+    "Delivery 2/Underwater Volcano - Delivery 2 Report.md",
     "Idea.md",
-    "LinkingAssimpReadmeLab4.pdf",
-    "FreeModelFromInternet.mp4",
-    "KeyboardControlTranslation.mkv",
-    "KeyboardControlTranslation.mp4",
     "Delivery 1/Project Proposal and Design Document.md",
-    "Untitled.md",
-    "Delivery 1",
-    "Delivery 2/Underwater Volcano - Delivery 2 Report.pdf",
-    "Delivery 2"
+    "Untitled.md"
   ]
 }

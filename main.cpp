@@ -4,11 +4,9 @@
 #include <iostream>
 #include <string>
 #include <stdio.h>
-#include <math.h>
 #include <vector> // STL dynamic memory.
 #include <unordered_map>
 #include <cstdlib>
-#include <ctime>
 
 // OpenGL includes
 #include <GL/glew.h>
@@ -32,6 +30,10 @@ namespace fs = std::filesystem;
 #include <gtc/quaternion.hpp>
 
 #include "CameraControl.hpp"
+#include "TextureManager.h"
+#include "ParticleSystem.h"
+#include "ShaderUtility.h"
+#include "ProgramSetting.h"
 #include <functional>
 
 /*----------------------------------------------------------------------------
@@ -39,13 +41,14 @@ MESH TO LOAD
 ----------------------------------------------------------------------------*/
 // this mesh is a dae file format but you should be able to use any other format too, obj is typically what is used
 // put the mesh in your project directory, or provide a filepath for it here
-#define TERRAIN_MESH "Assets/terrain.fbx"
+
+const vector<string> StaticModelPaths = {
+	"Assets/Terrain.fbx",
+	"Assets/Volcano.fbx"
+};
+
 #define SMOKE_MESH "Assets/Smoke.fbx"
 #define ANIMATION_FOLDER "Assets/animationModels/"
-
-#define TERRIAN 1
-#define SKELETON 0
-#define COLORANIMATION 0
 
 /*----------------------------------------------------------------------------
 ----------------------------------------------------------------------------*/
@@ -60,10 +63,14 @@ typedef struct ModelData
 	vector<glm::vec3> mVertices;
 	vector<glm::vec3> mNormals;
 	vector<glm::vec4> mColors;
-	vector<vec2> mTextureCoords;
+	vector<glm::vec2> mTextureCoords;
 	glm::mat4 mLocalTransform;
-	vector<ModelData> mChildMeshes;
 
+	string mTexturePath;
+	GLuint mTextureId;
+
+	vector<ModelData> mChildMeshes;
+	
 } ModelData;
 #pragma endregion SimpleTypes
 
@@ -74,12 +81,9 @@ auto startTime = std::chrono::high_resolution_clock::now();
 GLuint terrianShaderProgramID;
 
 // all the meshes in the scene
-ModelData volcano_terrian_mesh;
+vector<ModelData> staticModels;
 ModelData smoke_mesh;
 vector<ModelData> animation_meshes;
-
-int width = 1440;
-int height = 720;
 
 // fish hierarchical mesh rotation for each fish part
 GLfloat rotate_head = 0.0f, rotate_fin = 0.0f, rotate_body = 0.f;
@@ -99,13 +103,6 @@ glm::mat4 ConvertToGLMMat4(const aiMatrix4x4& aiMat) {
 		aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3,
 		aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4
 	);
-}
-
-void LoadTexture(const std::string& texturePath) {
-	// Load texture here
-	std::cout << "Loading texture: " << texturePath << std::endl;
-	// TODO: Implement texture loading
-
 }
 
 ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
@@ -176,7 +173,7 @@ ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
 			}
 			if (mesh->HasTextureCoords(0)) {
 				const aiVector3D* vt = &(mesh->mTextureCoords[0][v_i]);
-				modelPtr->mTextureCoords.push_back(vec2(vt->x, vt->y));
+				modelPtr->mTextureCoords.push_back(glm::vec2(vt->x, vt->y));
 			}
 			if (mesh->HasTangentsAndBitangents()) {
 				/* You can extract tangents and bitangents here              */
@@ -204,11 +201,18 @@ ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
 					std::cout << "Raw texture path: " << rawPath << std::endl;
 
 					// Remove the unwanted prefix (first character '8')
-					std::string texturePath = rawPath.substr(1); // Remove first character
-					std::cout << "Cleaned texture path: " << texturePath << std::endl;
+					std::string texturePath = rawPath.substr(4); // Remove first character
+					texturePath = texturePath.substr(0, texturePath.length() - 1);
+					size_t pos = 0;
+					while ((pos = texturePath.find("\\")) != std::string::npos) {
+						texturePath.replace(pos, 1, "/");
+					}
+					// if(fs::exists(texturePath))
+					// 	std::cout << "Cleaned texture path: " << texturePath << std::endl;
 
 					// Use the cleaned path for loading the texture
-					LoadTexture(texturePath); // TODO: Implement this function
+					modelPtr->mTexturePath = texturePath;
+					modelPtr->mTextureId = TextureManager::Instance()->LoadTexture(texturePath);
 				}
 			}
 
@@ -239,108 +243,15 @@ ModelData load_mesh(const char* file_name, bool b_hierarchical_mesh) {
 
 // Shader Functions- click on + to expand
 #pragma region SHADER_FUNCTIONS
-char* readShaderSource(const char* shaderFile) {
-	FILE* fp;
-	fopen_s(&fp, shaderFile, "rb");
-
-	filesystem::path p(shaderFile);
-
-	if (fp == NULL) {
-		cout << "application current path " << filesystem::current_path() << endl;
-		cout << "file path " << filesystem::absolute(p) << endl;
-		return NULL;
-	}
-
-	fseek(fp, 0L, SEEK_END);
-	long size = ftell(fp);
-
-	fseek(fp, 0L, SEEK_SET);
-	char* buf = new char[size + 1];
-	fread(buf, 1, size, fp);
-	buf[size] = '\0';
-
-	fclose(fp);
-
-	return buf;
-}
-
-
-static void AddShader(GLuint ShaderProgram, const char* pShaderText, GLenum ShaderType)
-{
-	// create a shader object
-	GLuint ShaderObj = glCreateShader(ShaderType);
-
-	if (ShaderObj == 0) {
-		std::cerr << "Error creating shader..." << std::endl;
-		std::cerr << "Press enter/return to exit..." << std::endl;
-		std::cin.get();
-		exit(1);
-	}
-	const char* pShaderSource = readShaderSource(pShaderText);
-
-	// Bind the source code to the shader, this happens before compilation
-	glShaderSource(ShaderObj, 1, (const GLchar**)&pShaderSource, NULL);
-	// compile the shader and check for errors
-	glCompileShader(ShaderObj);
-	GLint success;
-	// check for shader related errors using glGetShaderiv
-	glGetShaderiv(ShaderObj, GL_COMPILE_STATUS, &success);
-	if (!success) {
-		GLchar InfoLog[1024] = { '\0' };
-		glGetShaderInfoLog(ShaderObj, 1024, NULL, InfoLog);
-		std::cerr << "Error compiling "
-			<< (ShaderType == GL_VERTEX_SHADER ? "vertex" : "fragment")
-			<< " shader program: " << InfoLog << std::endl;
-		std::cerr << "Press enter/return to exit..." << std::endl;
-		std::cin.get();
-		exit(1);
-	}
-	// Attach the compiled shader object to the program object
-	glAttachShader(ShaderProgram, ShaderObj);
-}
-
-
-GLuint CompileShaders()
+GLuint CompileTerrianShader()
 {
 	//Start the process of setting up our shaders by creating a program ID
 	//Note: we will link all the shaders together into this ID
-
-	auto linkShader = [](GLuint programID)
-		{
-			GLint Success = 0;
-			GLchar ErrorLog[1024] = { '\0' };
-			// After compiling all shader objects and attaching them to the program, we can finally link it
-			glLinkProgram(programID);
-			// check for program related errors using glGetProgramiv
-			glGetProgramiv(programID, GL_LINK_STATUS, &Success);
-			if (Success == 0) {
-				glGetProgramInfoLog(programID, sizeof(ErrorLog), NULL, ErrorLog);
-				std::cerr << "Error linking shader program: " << ErrorLog << std::endl;
-				std::cerr << "Press enter/return to exit..." << std::endl;
-				std::cin.get();
-				exit(1);
-			}
-			// program has been successfully linked but needs to be validated to check whether the program can execute given the current pipeline state
-			glValidateProgram(programID);
-			// check for program related errors using glGetProgramiv
-			glGetProgramiv(programID, GL_VALIDATE_STATUS, &Success);
-			if (!Success) {
-				glGetProgramInfoLog(programID, sizeof(ErrorLog), NULL, ErrorLog);
-				std::cerr << "Invalid shader program: " << ErrorLog << std::endl;
-				std::cerr << "Press enter/return to exit..." << std::endl;
-				std::cin.get();
-				exit(1);
-			}
-			// Finally, use the linked shader program
-			// Note: this program will stay in effect for all draw calls until you replace it with another or explicitly disable its use
-			glUseProgram(programID);
-		};
-
 	terrianShaderProgramID = glCreateProgram();
 	if (terrianShaderProgramID == 0) {
-		std::cerr << "Error creating shader program..." << std::endl;
-		std::cerr << "Press enter/return to exit..." << std::endl;
-		std::cin.get();
+		cerr << "Error creating shader program..." << endl;
+		cerr << "Press enter/return to exit..." << endl;
+		cin.get();
 		exit(1);
 	}
 	AddShader(terrianShaderProgramID, "simpleVertexShader.txt", GL_VERTEX_SHADER);
@@ -351,8 +262,6 @@ GLuint CompileShaders()
 #pragma endregion SHADER_FUNCTIONS
 
 // VBO Functions - click on + to expand
-
-
 
 #pragma region VBO_FUNCTIONS
 
@@ -385,13 +294,14 @@ void generateObjectBufferMesh() {
 
 	//Note: you may get an error "vector subscript out of range" if you are using this code for a mesh that doesnt have positions and normals
 	//Might be an idea to do a check for that before generating and binding the buffer.
-	
 
-	// load terrain mesh
-	//volcano_terrian_mesh = load_mesh(TERRAIN_MESH, false);
+	for(auto& path : StaticModelPaths)
+	{
+		 staticModels.push_back(load_mesh(path.c_str(), false));
+	}
 
 	// load smoke mesh
-	//smoke_mesh = load_mesh(SMOKE_MESH, false);
+	// smoke_mesh = load_mesh(SMOKE_MESH, false);
 
 	// get all the animation model paths
 	vector<string> animationModelPaths = GetAllAnimationModelPath();
@@ -402,10 +312,12 @@ void generateObjectBufferMesh() {
 		animation_meshes.push_back(load_mesh(animationModelPaths[i].c_str(), true));
 	}
 
+	
 	// Set up the VAO and VBOs for terrain and all animation models
 	GLuint loc1 = glGetAttribLocation(terrianShaderProgramID, "vertex_position");
 	GLuint loc2 = glGetAttribLocation(terrianShaderProgramID, "vertex_normal");
-	if (loc1 == -1 || loc2 == -1)
+	GLuint loc3 = glGetAttribLocation(terrianShaderProgramID, "tex_coords");
+	if (loc1 == -1 || loc2 == -1 || loc3 == -1)
 	{
 		std::cerr << "Error getting attribute location" << std::endl;
 		exit(1);
@@ -414,8 +326,8 @@ void generateObjectBufferMesh() {
 	function<void(ModelData&)> SetUpModelBuffers = [&](ModelData& model) {
 		glGenVertexArrays(1, &model.mVao);
 		glBindVertexArray(model.mVao);
-		GLuint vbos[2] = { 0, 0 };
-		glGenBuffers(2, vbos);
+		GLuint vbos[3] = { 0, 0, 0};
+		glGenBuffers(3, vbos);
 
 		// Vertices VBO
 		glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
@@ -429,6 +341,12 @@ void generateObjectBufferMesh() {
 		glVertexAttribPointer(loc2, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
 		glEnableVertexAttribArray(loc2);
 
+		// Texture VBO
+		glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
+		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec2), model.mTextureCoords.data(), GL_STATIC_DRAW);
+		glVertexAttribPointer(loc3, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
+		glEnableVertexAttribArray(loc3);
+
 		glBindVertexArray(0); // unbind VAO
 		glBindBuffer(GL_ARRAY_BUFFER, 0); // unbind VBO
 
@@ -439,13 +357,20 @@ void generateObjectBufferMesh() {
 	};
 
 	glUseProgram(terrianShaderProgramID);
-	SetUpModelBuffers(volcano_terrian_mesh);
+	for(auto& model : staticModels)
+	{
+		SetUpModelBuffers(model);
+	}
+	
 	SetUpModelBuffers(smoke_mesh);
+	
 	for (int i = 0; i < animationModelPaths.size(); ++i) {
 		SetUpModelBuffers(animation_meshes[i]);
 	}
 
+	
 	cout << "finish generate object buffer mesh\n";
+
 }
 #pragma endregion VBO_FUNCTIONS
 
@@ -460,95 +385,115 @@ void renderBitmapText(float x, float y, void* font, const char* text) {
 
 void display() {
 
-	// tell GL to only draw onto a pixel if the shape is closer to the viewer
-	glEnable(GL_DEPTH_TEST); // enable depth-testing
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glDepthFunc(GL_LESS); // depth-testing interprets a smaller value as "closer"
-	glClearColor(0.004f, 0.361f, 0.588f, 0.8f); // background color to blue
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glClearColor(0.004f, 0.361f, 0.588f, 0.8f); // Background color to blue
 
-	glUseProgram(terrianShaderProgramID);
-	//Declare your uniform variables that will be used in your shader
-	int matrix_location = glGetUniformLocation(terrianShaderProgramID, "model");
-	int view_mat_location = glGetUniformLocation(terrianShaderProgramID, "view");
-	int proj_mat_location = glGetUniformLocation(terrianShaderProgramID, "proj");
-	int is_smoke_location = glGetUniformLocation(terrianShaderProgramID, "isSmoke");
-
-	// projection matrix
-	mat4 persp_proj = perspective(45.0f, (float)width / (float)height, 0.1f, 1000.0f);
-	
-	// Update the view matrix by using the camera's position and orientation
-	glm::vec3 forward(0.0);
-	forward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-	forward.y = sin(glm::radians(pitch));
-	forward.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-	forward = glm::normalize(forward);
-	glm::vec3 cameraTarget = cameraPosition + forward;
-	glm::mat4 view = glm::lookAt(cameraPosition, cameraTarget, glm::vec3(0.0f, 1.0f, 0.0f));
-
-
-
-	// update terrain uniforms & draw
-	function<void(const ModelData&, glm::mat4&, bool)> UpdateNormalMeshUniforms = [&](const ModelData& mesh, glm::mat4& modelMatrix, bool isSmoke) {
-		glBindVertexArray(mesh.mVao);
-		glUniformMatrix4fv(proj_mat_location, 1, GL_FALSE, persp_proj.m);
-		glUniformMatrix4fv(view_mat_location, 1, GL_FALSE, glm::value_ptr(view));
-		glUniformMatrix4fv(matrix_location, 1, GL_FALSE, glm::value_ptr(modelMatrix));
-		glUniform1i(is_smoke_location, isSmoke);
-		glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(mesh.mPointCount));
-	};
-
-	glm::mat4 model(1.0f);
-	// Draw terrain
-	UpdateNormalMeshUniforms(volcano_terrian_mesh, model, false);
-
-	// Draw smoke
-	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "smokeColor"), 0.5f, 0.5f, 0.6f);
-	glUniform1f(glGetUniformLocation(terrianShaderProgramID, "density"), 0.01f);
-	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "viewPos"), cameraPosition.x, cameraPosition.y, cameraPosition.z);
-	UpdateNormalMeshUniforms(smoke_mesh, model, true);
-
-	// Draw animation models
-	for (int i = 0; i < animation_meshes.size(); ++i) 
+	auto renderModels = [&]()
 	{
-		// translate the root mesh
-		glm::mat4 rootMesh = glm::mat4(1.f);
-		rootMesh = glm::rotate(rootMesh, glm::radians(rotate_body), glm::vec3(0.0f, 1.0f, 0.0f));
-		rootMesh = glm::translate(rootMesh, fish_translations[i]);
-		UpdateNormalMeshUniforms(animation_meshes[i], rootMesh, false);
+		glUseProgram(terrianShaderProgramID);
+		//Declare your uniform variables that will be used in shader
 
-		// body rotation not effect the child meshes
-		rootMesh = glm::mat4(1.f);
-		rootMesh = glm::translate(rootMesh, fish_translations[i]);
+		// vertex shader
+		int matrix_loc = glGetUniformLocation(terrianShaderProgramID, "model");
+		int view_mat_loc = glGetUniformLocation(terrianShaderProgramID, "view");
+		int proj_mat_loc = glGetUniformLocation(terrianShaderProgramID, "proj");
 
-		for(int j = 0; j < animation_meshes[i].mChildMeshes.size(); ++j)
+		// fragment shader
+#if 0
+		int is_smoke_location = glGetUniformLocation(terrianShaderProgramID, "isSmoke");
+#endif
+
+		// Update the view matrix by using the camera's position and orientation
+		glm::vec3 forward(0.0);
+		forward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+		forward.y = sin(glm::radians(pitch));
+		forward.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+		forward = glm::normalize(forward);
+		glm::vec3 cameraTarget = cameraPosition + forward;
+		view = glm::lookAt(cameraPosition, cameraTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+
+		// update terrain uniforms & draw
+		function<void(const ModelData&, glm::mat4&, bool)> UpdateNormalMeshUniforms = [&](const ModelData& mesh, glm::mat4& modelMatrix, bool isSmoke) {
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, mesh.mTextureId);
+			glBindVertexArray(mesh.mVao);
+			glUniformMatrix4fv(proj_mat_loc, 1, GL_FALSE, persp_proj.m);
+			glUniformMatrix4fv(view_mat_loc, 1, GL_FALSE, glm::value_ptr(view));
+			glUniformMatrix4fv(matrix_loc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
+#if 0
+			glUniform1i(is_smoke_location, isSmoke);
+#endif
+			// Example: Updating light parameters
+
+			glUniform3f(glGetUniformLocation(terrianShaderProgramID, "viewPos"), cameraPosition.x, cameraPosition.y, cameraPosition.z);
+			glUniform1i(glGetUniformLocation(terrianShaderProgramID, "texture1"), 0);
+			glUniform3fv(glGetUniformLocation(terrianShaderProgramID, "sunlightDir"), 1, &sunlightDir[0]);
+			glUniform3fv(glGetUniformLocation(terrianShaderProgramID, "sunlightColor"), 1, &sunlightColor[0]);
+			glUniform1f(glGetUniformLocation(terrianShaderProgramID, "ambientIntensity"), ambientIntensity);
+			glUniform1f(glGetUniformLocation(terrianShaderProgramID, "waterDepth"), waterDepth);
+			glUniform1f(glGetUniformLocation(terrianShaderProgramID, "lightDecay"), lightDecay);
+			glUniform3fv(glGetUniformLocation(terrianShaderProgramID, "waterColor"), 1, &waterColor[0]);
+
+			glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(mesh.mPointCount));
+			};
+
+		glm::mat4 modelMat(1.0f);
+
+		// Draw terrain
+		for (const auto& staticModel : staticModels)
 		{
-			// rotate the child mesh
-			auto& childMesh = animation_meshes[i].mChildMeshes[j];
-			glm::mat4 child(1.0);
-			if (j == 0) // first child mesh is the head
-			{
-				child = glm::rotate(child, glm::radians(rotate_head), glm::vec3(0.0f, 1.0f, 0.0f));
-			}
-			else // second child mesh is the fin
-			{
-				child = glm::rotate(child, glm::radians(rotate_fin), glm::vec3(0.0f, 1.0f, 0.0f));
-			}
-
-			// update the child transform matrix by multiplying the root mesh transform and its local transform
-			child = rootMesh * animation_meshes[i].mChildMeshes[j].mLocalTransform * child;
-			
-			UpdateNormalMeshUniforms(childMesh, child, false);
+			UpdateNormalMeshUniforms(staticModel, modelMat, false);
 		}
-	}
 
+		// static smoke
+		// Draw smoke
+		//glUniform3f(glGetUniformLocation(terrianShaderProgramID, "smokeColor"), 0.5f, 0.5f, 0.6f);
+		//glUniform1f(glGetUniformLocation(terrianShaderProgramID, "density"), 0.01f);
+		//glUniform3f(glGetUniformLocation(terrianShaderProgramID, "viewPos"), cameraPosition.x, cameraPosition.y, cameraPosition.z);
+		//UpdateNormalMeshUniforms(smoke_mesh, modelMat, true);
 
-	renderBitmapText(-1.0, 0.9, GLUT_BITMAP_HELVETICA_18, "The scene consists of a shining volcano, swiming fishes, smoke out of volcano, rocks, coral");
-	renderBitmapText(-1.0, 0.85, GLUT_BITMAP_HELVETICA_18, "All the fishes are moving towards its heading direction");
-	renderBitmapText(-1.0, 0.8, GLUT_BITMAP_HELVETICA_18, "Each Fish contains hierarchical meshes that fin and head would move relatively to its body");
-	renderBitmapText(-1.0, 0.75, GLUT_BITMAP_HELVETICA_18, "Key Control : W(forward) S(backward) A(left) D(right) Q(upward) E(downward). Shift + Key Control : Speed up");
-	renderBitmapText(-1.0, 0.7, GLUT_BITMAP_HELVETICA_18, "Mouse Control : Left click and drag to control camera's yaw and pitch");
+		// Draw animation models
+		for (int i = 0; i < animation_meshes.size(); ++i)
+		{
+			// translate the root mesh
+			glm::mat4 rootMesh = glm::mat4(1.f);
+			rootMesh = glm::rotate(rootMesh, glm::radians(rotate_body), glm::vec3(0.0f, 1.0f, 0.0f));
+			rootMesh = glm::translate(rootMesh, fish_translations[i]);
+			UpdateNormalMeshUniforms(animation_meshes[i], rootMesh, false);
+
+			// body rotation not effect the child meshes
+			rootMesh = glm::mat4(1.f);
+			rootMesh = glm::translate(rootMesh, fish_translations[i]);
+
+			for (int j = 0; j < animation_meshes[i].mChildMeshes.size(); ++j)
+			{
+				// rotate the child mesh
+				auto& childMesh = animation_meshes[i].mChildMeshes[j];
+				glm::mat4 child(1.0);
+				if (j == 0) // first child mesh is the head
+				{
+					child = glm::rotate(child, glm::radians(rotate_head), glm::vec3(0.0f, 1.0f, 0.0f));
+				}
+				else // second child mesh is the fin
+				{
+					child = glm::rotate(child, glm::radians(rotate_fin), glm::vec3(0.0f, 1.0f, 0.0f));
+				}
+
+				// update the child transform matrix by multiplying the root mesh transform and its local transform
+				child = rootMesh * animation_meshes[i].mChildMeshes[j].mLocalTransform * child;
+
+				UpdateNormalMeshUniforms(childMesh, child, false);
+			}
+		}
+
+		// renderBitmapText(-1.0, 0.9, GLUT_BITMAP_HELVETICA_18, "The scene consists of a shining volcano, swiming fishes, smoke out of volcano, rocks, coral");
+		// renderBitmapText(-1.0, 0.85, GLUT_BITMAP_HELVETICA_18, "All the fishes are moving towards its heading direction");
+		// renderBitmapText(-1.0, 0.8, GLUT_BITMAP_HELVETICA_18, "Each Fish contains hierarchical meshes that fin and head would move relatively to its body");
+		// renderBitmapText(-1.0, 0.75, GLUT_BITMAP_HELVETICA_18, "Key Control : W(forward) S(backward) A(left) D(right) Q(upward) E(downward). Shift + Key Control : Speed up");
+		// renderBitmapText(-1.0, 0.7, GLUT_BITMAP_HELVETICA_18, "Mouse Control : Left click and drag to control camera's yaw and pitch");
+	};
+	renderModels();
+	ParticleSystem::Instance()->renderParticles();
 
 	glutSwapBuffers();
 }
@@ -568,10 +513,52 @@ const vector<glm::vec3> fish_translate_directions = {
 };
 
 void updateScene() {
-    auto currentTime = std::chrono::high_resolution_clock::now();
+	static auto lastTime = std::chrono::high_resolution_clock::now();
+	auto currentTime = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> elapsedTime = currentTime - startTime;
     float timeInSeconds = elapsedTime.count(); // Get elapsed time in seconds
+	auto updateLighting = [&]()
+		{
+			float dayDuration = 30.0f;  // Duration of one day-night cycle in seconds
+			float timeFactor = glm::mod(timeInSeconds, dayDuration) / dayDuration;
+			float angle = (timeFactor - 0.5) * PI; // Angle changes over time
 
+			// Sunlight direction rotates around the Y-axis (east to west)
+			sunlightDir = glm::normalize(glm::vec3(sin(angle), -cos(angle), 0.0));
+
+			// Sunlight Color
+			// Define key colors for sunrise, midday, and sunset
+			const glm::vec3 sunriseColor{ 1.0, 0.7, 0.3 };
+			const glm::vec3 middayColor{ 1.0, 1.0, 0.8 };
+			const glm::vec3 sunsetColor{ 1.0, 0.5, 0.2 };
+
+			if (timeFactor < 0.33f) {
+				// Sunrise to midday
+				sunlightColor = glm::mix(sunriseColor, middayColor, timeFactor / 0.33f);
+			}
+			else if (timeFactor < 0.66f) {
+				// Midday to sunset
+				sunlightColor = glm::mix(middayColor, sunsetColor, (timeFactor - 0.33f) / 0.33f);
+			}
+			else {
+				// Sunset to sunrise
+				sunlightColor = glm::mix(sunsetColor, sunriseColor, (timeFactor - 0.66f) / 0.34f);
+			}
+
+			// ambient light intensity
+			ambientIntensity = 0.1f + 0.2f * abs(cos(angle)); // Sinusoidal variation
+
+			float cycleDuration = 30.0f; // Water color cycle duration
+
+			// Murkiness: smoothly oscillate light decay between clear and murky
+			lightDecay = 0.05f + 0.05f * sin(timeInSeconds / cycleDuration * 2.0f * 3.14159f);
+
+			// Water color: oscillate between blue-green and darker tones
+			glm::vec3 clearWater{ 0.0, 0.5, 0.7 };
+			glm::vec3 murkyWater{ 0.1, 0.3, 0.4 };
+			waterColor = glm::mix(clearWater, murkyWater, 0.5f + 0.5f * sin(timeInSeconds / cycleDuration * 2.0f * 3.14159f));
+		};
+	updateLighting();
 	// Fin and head of a fish rotate in a sinusoidal pattern
     rotate_fin = 0.4f * sin(timeInSeconds);
 	rotate_body = 0.4f * sin(timeInSeconds + PI / 4.0f);
@@ -581,6 +568,10 @@ void updateScene() {
 	{
 		fish_translations[i] += fish_translate_directions[i] * 0.01f;
 	}
+	// update smoke
+	std::chrono::duration<float> deltaTime = currentTime - lastTime;
+	lastTime = currentTime;
+	ParticleSystem::Instance()->updateParticles(deltaTime.count(), 3); // Simulate ~60FPS
 
     keyControl::updateCameraPosition();
 
@@ -592,10 +583,9 @@ void updateScene() {
 void init()
 {
 	// Set up the shaders
-	GLuint shaderProgramID = CompileShaders();
-	// load mesh into a vertex buffer array
+	CompileTerrianShader();
 	generateObjectBufferMesh();
-
+	ParticleSystem::Instance()->Init();
 }
 
 

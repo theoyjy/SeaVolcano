@@ -1,3 +1,4 @@
+#pragma once
 #include <unordered_map>
 #include <iostream>
 #include <GL/glut.h>
@@ -8,19 +9,27 @@
 #include <gtc/matrix_transform.hpp>
 #include <gtc/quaternion.hpp>
 
+#include "ProgramSetting.h"
+
 using namespace std;
 
-const glm::vec3 cameraDefaultPosition(-4.0f, 8.0f, 30.0f);
+const glm::vec3 cameraDefaultPosition(1.44838, 65, 105.3027);
+//const glm::vec3 cameraDefaultPosition(0, 0,10);
 glm::vec3 cameraPosition = cameraDefaultPosition; // Camera position in world space
 
-const float defaultYaw = -80.f;
-const float defaultPitch = -5.f;
+const float defaultYaw = -90;
+const float defaultPitch = -13;
 float yaw = defaultYaw;  // Horizontal rotation (around Y-axis)
 float pitch = defaultPitch; // Vertical rotation (around X-axis)
 
 // camera and keyboard, mouse input
 int lastMouseX = 0, lastMouseY = 0;
 float angleX = 0.0f, angleY = 0.0f;
+
+// camera projection matrix used in shader
+const mat4 persp_proj = perspective(45.0f, (float)width / (float)height, 0.1f, 1000.0f);
+glm::mat4 view;
+
 
 namespace keyControl
 {
@@ -57,7 +66,7 @@ namespace keyControl
 		}
 	}
 
-	const float normalSpeed = 0.05f;
+	const float normalSpeed = 0.15f;
 	// update camera position
 	void updateCameraPosition() {
 

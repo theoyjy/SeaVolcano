@@ -1,0 +1,15 @@
+#version 330 core
+
+in vec2 TexCoords;
+out vec4 FragColor;
+in float LifetimePercent;
+
+uniform sampler2D particleTexture;
+uniform vec4 particleColor;
+
+void main() {
+    float alpha = pow(LifetimePercent, 0.5); // Fade out faster at the end
+    vec4 texColor = texture(particleTexture, TexCoords) * vec4(1.0, 1.0, 1.0, alpha);
+    if (texColor.a < 0.1) discard; // Optional: Discard low alpha pixels
+    FragColor = texColor * particleColor;
+}
