@@ -45,7 +45,7 @@ MESH TO LOAD
 
 #define ANIMATION_FOLDER "Assets/animationModels/"
 #define STATIC_MODEL_FOLDER "Assets/StaticModels/"
-
+#define FISH_MODEL "Assets/animationModels/Fish.fbx"
 
 /*----------------------------------------------------------------------------
 ----------------------------------------------------------------------------*/
@@ -53,10 +53,19 @@ using namespace std;
 
 #pragma region SimpleTypes
 
+struct FishInstance {
+	float angle = 0.f;        // Current angle along the circular path
+	float speed = 0.f;        // Speed of this fish
+	float radius = 0.f;       // Radius of the circular path
+	float y = 0.f;            // Vertical offset for the fish's circle
+};
+
+
 typedef struct ModelData
 {
 	size_t mPointCount = 0;
 	GLuint mVao = 0;
+	GLuint instanceVBO;
 	vector<glm::vec3> mVertices;
 	vector<glm::vec3> mNormals;
 	vector<glm::vec4> mColors;
@@ -81,8 +90,9 @@ GLuint terrianShaderProgramID;
 
 // all the meshes in the scene
 vector<ModelData> staticModels;
-ModelData smoke_mesh;
-vector<ModelData> animation_meshes;
+//ModelData smoke_mesh;
+//vector<ModelData> animation_meshes;
+ModelData fishModel;
 
 // fish hierarchical mesh rotation for each fish part
 GLfloat rotate_head = 0.0f, rotate_fin = 0.0f, rotate_body = 0.f;
@@ -90,6 +100,10 @@ GLfloat rotate_head = 0.0f, rotate_fin = 0.0f, rotate_body = 0.f;
 // whole translation for each fish model
 vector<glm::mat4> fish_transforms;
 vector<glm::vec3> fish_centers;
+vector<FishInstance> fishInstances;
+vector<glm::mat4> fishInstanceTransforms;
+#define FISHCOUNT 30
+
 
 #pragma region MESH LOADING
 /*----------------------------------------------------------------------------
@@ -293,6 +307,51 @@ vector<string> GetAllModelsInPath(const char* path)
 	return ModelPaths;
 }
 
+inline void CalcFishInstanceTransform(const FishInstance& fish, glm::mat4& transform)
+{
+	// Compute position on the circle, including vertical offset (y)
+	float x = fish.radius * cos(fish.angle);
+	float z = fish.radius * sin(fish.angle);
+	glm::vec3 position(x, fish.y, z); // Include vertical offset in position
+
+	// Compute tangent direction (fish's forward direction)
+	glm::vec3 forwardDirection(
+		-sin(fish.angle),
+		0.0f,
+		cos(fish.angle)
+	);
+	forwardDirection = glm::normalize(forwardDirection);
+
+	// Compute rotation matrix to align fish with the forward direction
+	glm::vec3 up(0.0f, 1.0f, 0.0f);
+	glm::vec3 right = glm::normalize(glm::cross(up, forwardDirection));
+	glm::vec3 correctedUp = glm::cross(forwardDirection, right);
+
+	// update the fish transform matrix
+	glm::mat4 rotation = glm::mat4(1.0f);
+	rotation[0] = glm::vec4(right, 0.0f);
+	rotation[1] = glm::vec4(correctedUp, 0.0f);
+	rotation[2] = glm::vec4(-forwardDirection, 0.0f);
+
+	transform = glm::translate(glm::mat4(1.0f), position) * rotation;
+}
+
+void InitializeFishInstances() 
+{
+	fishInstanceTransforms.resize(FISHCOUNT, glm::mat4(1.0f));
+
+	for (float i = 0; i < FISHCOUNT; ++i)
+	{
+		FishInstance instance;
+		instance.angle = 0.3f * glm::two_pi<float>() * i;
+		instance.speed = 0.075f;
+		instance.radius = 40.f + 1.f * i;
+		instance.y = 40.f + 5.f * i; // Random y-value between -5 and 5
+		CalcFishInstanceTransform(instance, fishInstanceTransforms[int(i)]);
+		fishInstances.push_back(instance);
+	}
+}
+
 void generateObjectBufferMesh() {
 	/*----------------------------------------------------------------------------
 	LOAD MESH HERE AND COPY INTO BUFFERS
@@ -307,23 +366,25 @@ void generateObjectBufferMesh() {
 	}
 
 	// get all the animation model paths
-	vector<string> animationModelPaths = GetAllModelsInPath(ANIMATION_FOLDER);
-	fish_transforms.resize(animationModelPaths.size(), glm::mat4(1.0f));
-	fish_centers.resize(animationModelPaths.size(), glm::vec3(0.0f));
+	//vector<string> animationModelPaths = GetAllModelsInPath(ANIMATION_FOLDER);
+	//fish_transforms.resize(animationModelPaths.size(), glm::mat4(1.0f));
+	//fish_centers.resize(animationModelPaths.size(), glm::vec3(0.0f));
 
 	// Load each animation model
-	for (size_t i = 0; i < animationModelPaths.size(); i++)
-	{
-		animation_meshes.push_back(load_mesh(animationModelPaths[i].c_str(), true));
-	}
+	//for (size_t i = 0; i < animationModelPaths.size(); i++)
+	//{
+	//	animation_meshes.push_back(load_mesh(animationModelPaths[i].c_str(), true));
+	//}
 
-	
+	fishModel = load_mesh(FISH_MODEL, true);
+	InitializeFishInstances();
+
 	// Set up the VAO and VBOs for terrain and all animation models
 	GLuint loc1 = glGetAttribLocation(terrianShaderProgramID, "vertex_position");
 	GLuint loc2 = glGetAttribLocation(terrianShaderProgramID, "vertex_normal");
 	GLuint loc3 = glGetAttribLocation(terrianShaderProgramID, "tex_coords");
 
-	function<void(ModelData&)> SetUpModelBuffers = [&](ModelData& model) {
+	function<void(ModelData&,bool)> SetUpModelBuffers = [&](ModelData& model, bool bInstance) {
 		glGenVertexArrays(1, &model.mVao);
 		glBindVertexArray(model.mVao);
 		GLuint vbos[3] = { 0, 0, 0};
@@ -347,36 +408,54 @@ void generateObjectBufferMesh() {
 		glVertexAttribPointer(loc3, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
 		glEnableVertexAttribArray(loc3);
 
+
+		if (bInstance)
+		{
+			glGenBuffers(1, &model.instanceVBO);
+			glBindBuffer(GL_ARRAY_BUFFER, model.instanceVBO);
+
+			// Allocate space for instance data (e.g., model matrices)
+			glBufferData(GL_ARRAY_BUFFER, fishInstanceTransforms.size() * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
+
+			// Set up instanced matrix attribute (mat4 occupies 4 attribute slots)
+			for (int i = 0; i < 4; i++) {
+				glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(i * sizeof(glm::vec4)));
+				glEnableVertexAttribArray(3 + i);
+				glVertexAttribDivisor(3 + i, 1); // Tell OpenGL this is per-instance data
+			}
+		}
+
 		glBindVertexArray(0); 
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 		for (int j = 0; j < model.mChildMeshes.size(); ++j)
 		{
-			SetUpModelBuffers(model.mChildMeshes[j]);
+			SetUpModelBuffers(model.mChildMeshes[j], bInstance);
 		}
 	};
 
 	glUseProgram(terrianShaderProgramID);
 	for(auto& model : staticModels)
 	{
-		SetUpModelBuffers(model);
+		SetUpModelBuffers(model, false);
 	}
 	
-	SetUpModelBuffers(smoke_mesh);
+	SetUpModelBuffers(fishModel, true);
 	
-	for (int i = 0; i < animationModelPaths.size(); ++i) {
-		SetUpModelBuffers(animation_meshes[i]);
-		for (const auto& vertex : animation_meshes[i].mVertices) {
-			fish_centers[i] += vertex;
-		}
-		// get average center of the fish
-		fish_centers[i] /= static_cast<float>(animation_meshes[i].mVertices.size());
-	}
+	//for (int i = 0; i < animationModelPaths.size(); ++i) {
+	//	SetUpModelBuffers(animation_meshes[i]);
+	//	for (const auto& vertex : animation_meshes[i].mVertices) {
+	//		fish_centers[i] += vertex;
+	//	}
+	//	// get average center of the fish
+	//	fish_centers[i] /= static_cast<float>(animation_meshes[i].mVertices.size());
+	//}
 
 	
 	cout << "finish generate object buffer mesh\n";
 
 }
+
 #pragma endregion VBO_FUNCTIONS
 
 void renderBitmapText(float x, float y, void* font, const char* text) {
@@ -392,68 +471,111 @@ void renderModels()
 {
 	glUseProgram(terrianShaderProgramID);
 
+	// following uniforms set up once per frame
+	glUniformMatrix4fv(glGetUniformLocation(terrianShaderProgramID, "proj"), 1, GL_FALSE, persp_proj.m);
+	glUniformMatrix4fv(glGetUniformLocation(terrianShaderProgramID, "view"), 1, GL_FALSE, glm::value_ptr(view));
+	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "viewPos"), cameraPosition.x, cameraPosition.y, cameraPosition.z);
+	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "lightDirection"), lightDirection.x, lightDirection.y, lightDirection.z);
+	glUniform1f(glGetUniformLocation(terrianShaderProgramID, "time"), timeInSeconds);
+
+
 	int matrix_loc = glGetUniformLocation(terrianShaderProgramID, "model");
-	int view_mat_loc = glGetUniformLocation(terrianShaderProgramID, "view");
-	int proj_mat_loc = glGetUniformLocation(terrianShaderProgramID, "proj");
-	
 	//  update uniforms & draw
-	function<void(const ModelData&, glm::mat4&, bool)> UpdateNormalMeshUniforms = [&](const ModelData& mesh, glm::mat4& modelMatrix, bool isSmoke) {
+	function<void(const ModelData&, glm::mat4&)> UpdateShaderVariables = [&](const ModelData& mesh, glm::mat4& modelMatrix) {
+		// bind texture
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, mesh.mTextureId);
+		// bind VAO
 		glBindVertexArray(mesh.mVao);
-		glUniformMatrix4fv(proj_mat_loc, 1, GL_FALSE, persp_proj.m);
-		glUniformMatrix4fv(view_mat_loc, 1, GL_FALSE, glm::value_ptr(view));
+
+		// update common uniforms
 		glUniformMatrix4fv(matrix_loc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
-
-
-		glUniform3f(glGetUniformLocation(terrianShaderProgramID, "viewPos"), cameraPosition.x, cameraPosition.y, cameraPosition.z);
 		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "texture1"), 0);
-		glUniform3f(glGetUniformLocation(terrianShaderProgramID, "lightDirection"), lightDirection.x, lightDirection.y, lightDirection.z);
-		glUniform1f(glGetUniformLocation(terrianShaderProgramID, "time"), timeInSeconds);
-		
+		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "isInstanced"), false);
 
 		glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(mesh.mPointCount));
+
+		// Cleanup
+		glBindVertexArray(0);
+		glBindTexture(GL_TEXTURE_2D, 0);
 	};
 
+	function<void(const ModelData&, const vector<glm::mat4>&)> UpdateAnimationInstances = [&](const ModelData& mesh, const vector<glm::mat4>& transforms)
+	{	
+		// bind texture
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, mesh.mTextureId);
+
+		// bind VAO
+		glBindVertexArray(mesh.mVao);
+
+		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "texture1"), 0);
+
+		// bind isInstanced flag
+		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "isInstanced"), true);
+
+		// Update instance mesh
+		if (!fishInstances.empty() && mesh.instanceVBO != 0)
+		{
+			// Bind the instance VBO
+			glBindBuffer(GL_ARRAY_BUFFER, mesh.instanceVBO);
+			std::cout << "Size of FishInstance: " << sizeof(FishInstance) << std::endl;
+			std::cout << "Size of glm::mat4: " << sizeof(glm::mat4) << std::endl;
+
+			// Map the buffer and copy new instance data
+			glm::mat4* mappedBuffer = static_cast<glm::mat4*>(
+				glMapBufferRange(GL_ARRAY_BUFFER, 0, transforms.size() * sizeof(glm::mat4),
+					GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT));
+
+			// Copy the updated model matrices to the buffer
+			std::memcpy(mappedBuffer, transforms.data(), transforms.size() * sizeof(glm::mat4));
+
+			// Unmap the buffer
+			glUnmapBuffer(GL_ARRAY_BUFFER);
+			glDrawArraysInstanced(GL_TRIANGLES, 0, static_cast<GLsizei>(fishModel.mPointCount), transforms.size());
+		}
+
+		// Cleanup
+		glBindVertexArray(0);
+		glBindTexture(GL_TEXTURE_2D, 0);
+	};
 	glm::mat4 modelMat(1.0f);
 
 	// Draw static models
 	for (const auto& staticModel : staticModels)
 	{
-		UpdateNormalMeshUniforms(staticModel, modelMat, false);
+		UpdateShaderVariables(staticModel, modelMat);
 	}
 
-	// Draw animation models
-	for (int i = 0; i < animation_meshes.size(); ++i)
+	// Draw fish animation
+
+	glm::mat4 rotateBodyMtx = glm::mat4(1.f);
+	rotateBodyMtx = glm::rotate(rotateBodyMtx, glm::radians(rotate_body), glm::vec3(0.0f, 1.0f, 0.0f));
+	vector<glm::mat4> TmpTransforms(FISHCOUNT, rotateBodyMtx);
+
+	std::transform(fishInstanceTransforms.begin(), fishInstanceTransforms.end(), TmpTransforms.begin(),
+		[&](const glm::mat4& transform) { return transform * rotateBodyMtx; });
+
+	UpdateAnimationInstances(fishModel, TmpTransforms);
+
+	for (int i = 0; i < fishModel.mChildMeshes.size(); ++i)
 	{
-		// rotate fish body first then translate
-		glm::mat4 rootMesh = glm::mat4(1.f);
-		rootMesh = glm::rotate(rootMesh, glm::radians(rotate_body), glm::vec3(0.0f, 1.0f, 0.0f));
-		rootMesh = rootMesh * fish_transforms[i];
-		UpdateNormalMeshUniforms(animation_meshes[i], rootMesh, false);
-
-		// body rotation not effect the child meshes
-		rootMesh = fish_transforms[i];
-
-		for (int j = 0; j < animation_meshes[i].mChildMeshes.size(); ++j)
+		// rotate the child mesh
+		auto& childMesh = fishModel.mChildMeshes[i];
+		glm::mat4 rotateChildMtx(1.0);
+		if (i == 0) // first child mesh is the head
 		{
-			// rotate the child mesh
-			auto& childMesh = animation_meshes[i].mChildMeshes[j];
-			glm::mat4 child(1.0);
-			if (j == 0) // first child mesh is the head
-			{
-				child = glm::rotate(child, glm::radians(rotate_head), glm::vec3(0.0f, 1.0f, 0.0f));
-			}
-			else // second child mesh is the fin
-			{
-				child = glm::rotate(child, glm::radians(rotate_fin), glm::vec3(0.0f, 1.0f, 0.0f));
-			}
-
-			// update the child transform matrix by multiplying the root mesh transform and its local transform
-			child = rootMesh * animation_meshes[i].mChildMeshes[j].mLocalTransform * child;
-
-			UpdateNormalMeshUniforms(childMesh, child, false);
+			rotateChildMtx = glm::rotate(rotateChildMtx, glm::radians(rotate_head), glm::vec3(0.0f, 1.0f, 0.0f));
 		}
+		else // second child mesh is the fin
+		{
+			rotateChildMtx = glm::rotate(rotateChildMtx, glm::radians(rotate_fin), glm::vec3(0.0f, 1.0f, 0.0f));
+		}
+		
+		std::transform(fishInstanceTransforms.begin(), fishInstanceTransforms.end(), TmpTransforms.begin(),
+			[&](const glm::mat4& transform) { return transform * rotateBodyMtx * fishModel.mChildMeshes[i].mLocalTransform * rotateChildMtx; });
+	
+		UpdateAnimationInstances(childMesh, TmpTransforms);
 	}
 }
 
@@ -499,45 +621,19 @@ float currentAngle = 0.0f;
 void updateAnimation()
 {
 	// Fin and head of a fish rotate in a sinusoidal pattern
-	rotate_fin = 0.5f * sin(timeInSeconds*1.5);
-	rotate_body = 0.5f * sin(timeInSeconds*1.5 + glm::radians(45.0f));
-	rotate_head = 0.5f * sin(timeInSeconds*1.5 + glm::radians(90.0f));
+	rotate_fin = 4.f * sin(timeInSeconds*2.5f);
+	rotate_body = 2.f * sin(timeInSeconds*2.5f + glm::radians(45.0f));
+	rotate_head = 4.f * sin(timeInSeconds*2.5f + glm::radians(90.0f));
 
-
-	const float rotationSpeed = 0.05f; // radians
 	const float deltaTime = 0.016f;
-	float radius = 4.0f;
-
-	currentAngle += rotationSpeed * deltaTime;
-	// Keep angle within [0, 2*PI]
-	if (currentAngle > glm::two_pi<float>()) { 
-		currentAngle -= glm::two_pi<float>();
-	}
-
-	for (int i = 0; i < fish_centers.size(); ++i)
-	{
-		glm::vec3 newPosition(
-			radius * cos(currentAngle), // X position on the circle
-			fish_centers[i].y - 5.0,               // Maintain the Y position and low down a bit
-			radius * sin(currentAngle)  // Z position on the circle
-		);
-
-		glm::vec3 forwardDirection(
-			-radius * sin(currentAngle), // Tangent X
-			0.0f,                        // Tangent Y (flat circle in XZ plane)
-			radius * cos(currentAngle)   // Tangent Z
-		);
-		forwardDirection = glm::normalize(forwardDirection);
-
-		glm::vec3 upVector(0.0f, 1.0f, 0.0f); // Assume Y is up
-		glm::vec3 rightVector = glm::normalize(glm::cross(upVector, forwardDirection));
-
-		glm::mat4 transform = glm::mat4(1.0f);
-		transform[0] = glm::vec4(rightVector, 0.0f);      // Right vector
-		transform[1] = glm::vec4(upVector, 0.0f);         // Up vector
-		transform[2] = glm::vec4(-forwardDirection, 0.0f); // Forward vector (negative Z)
-		transform[3] = glm::vec4(newPosition, 1.0f);      // Position
-		fish_transforms[i] = transform;
+	for (int i = 0; i < FISHCOUNT; ++i) {
+		auto& fish = fishInstances[i];
+		// Update angle based on speed
+		fish.angle += fish.speed * deltaTime;
+		if (fish.angle > glm::two_pi<float>()) {
+			fish.angle -= glm::two_pi<float>();
+		}
+		CalcFishInstanceTransform(fish, fishInstanceTransforms[i]);
 	}
 
 }
@@ -572,7 +668,6 @@ void init()
 	glDisable(GL_BLEND);
 	CompileTerrianShader();
 	generateObjectBufferMesh();
-
 	ParticleSystem::Instance()->Init();
 }
 

@@ -1,0 +1,67 @@
+#version 330
+
+in vec3 FragPos;
+in vec3 Normal;
+in vec2 TexCoords;
+
+uniform vec3 viewPos;           // Camera position
+uniform sampler2D texture1;     // Texture sampler
+
+// Light properties
+uniform vec3 lightDirection;    // Direction of sunlight (normalized)
+uniform vec3 lightAmbient;      // Ambient light color
+uniform vec3 lightDiffuse;      // Diffuse light color
+uniform float depthFalloff;     // Light attenuation factor with depth
+uniform float causticIntensity; // Strength of sunlight caustics
+uniform float time;             // Animation time
+
+out vec4 FragColor;
+
+
+
+// Procedural caustics
+float caustics(vec3 pos) {
+    float pattern = sin(pos.x * 20.0 + time * 2.0) * cos(pos.z * 20.0 + time * 2.0);
+    return pattern * 0.5 + 0.5; // Normalize to [0, 1]
+}
+
+void main() {
+    // Normalize input vectors
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(-lightDirection);
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+
+
+    // Ambient lighting
+    vec3 ambient = lightAmbient;
+
+    // Diffuse lighting with caustics
+    float diff = max(dot(norm, lightDir), 0.2);
+    float causticEffect = caustics(FragPos) * causticIntensity;
+    vec3 diffuse = lightDiffuse * diff * causticEffect;
+
+    // Specular lighting
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64);
+    vec3 specular = vec3(0.8, 0.8, 1.0) * spec;
+
+    // Light attenuation based on depth
+    float depth = abs(FragPos.y-50);
+    float attenuation = exp(-depth * depthFalloff);
+    vec3 attenuatedLight = (ambient + diffuse + specular) * attenuation;
+
+    // Calculate water color based on depth
+    const vec3 shallowColor = vec3(0.0f, 0.4f, 0.8f); // Bright blue
+    const vec3 deepColor = vec3(0.0f, 0.1f, 0.3f);    // Dark blue
+    vec3 waterColor = mix(shallowColor, deepColor, depth / 100.0f);
+
+    // Combine lighting with water absorption
+    vec3 finalLight = mix(waterColor, attenuatedLight, attenuation);
+    //vec3 finalLight = lightAmbient + lightDiffuse * diff; // No attenuation
+
+    // Sample texture and apply lighting
+    vec4 texColor = texture(texture1, TexCoords);
+
+    FragColor = vec4(finalLight * texColor.rgb, 1.0);
+
+}

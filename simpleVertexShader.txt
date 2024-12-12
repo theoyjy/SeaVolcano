@@ -3,29 +3,36 @@
 layout (location = 0) in vec3 vertex_position;
 layout (location = 1) in vec3 vertex_normal;
 layout (location = 2) in vec2 tex_coords;
+layout (location = 3) in mat4 instanceModel; // Occupies locations 3, 4, 5, and 6
 
 out vec4 EyeCoords;
 out vec3 Normal;
 out vec2 TexCoords;
 out vec3 FragPos;
 
+uniform bool isInstanced;
 uniform mat4 view;
 uniform mat4 proj;
 uniform mat4 model;
 
 void main() {
 
+    mat4 effectiveModel = isInstanced ? instanceModel : model;
+
     // Pass texture coordinates
     TexCoords = tex_coords;
 
-    // Model-view matrix and normal transformation
-    mat4 ModelViewMatrix = view * model;
-    mat3 NormalMatrix = mat3(transpose(inverse(ModelViewMatrix)));
+    // world position
+    FragPos = vec3(effectiveModel * vec4(vertex_position, 1.0));
 
-    // Transform vertex position and normal to view space
+
+    // Transform vertex normal to world space
+    mat3 NormalMatrix = mat3(transpose(inverse(effectiveModel)));
+
     Normal = normalize(NormalMatrix * vertex_normal);
-    EyeCoords = ModelViewMatrix * vec4(vertex_position, 1.0);
-    FragPos = vec3(model * vec4(vertex_position, 1.0));
+
+    // Transform to view space
+    EyeCoords = view * vec4(FragPos, 1.0);
 
     // Convert position to clip coordinates
     gl_Position = proj * EyeCoords;

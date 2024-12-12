@@ -1,12 +1,18 @@
+YouTube Link: https://www.youtube.com/watch?v=RfprQyhwirQ
+
 ![[Pasted image 20241212020220.png]]
 #### Lighting, Shading and Texture Mapping: 
+
+The main shader is in charge of render all the models, which is implemented with Phong illumination with a waving sunlight and additional caustic effects. For the particle shader, there is a red directional light to simulate the effect of lava on the smoke.
+
+##### Main Shader
 ![[Pasted image 20241212022126.png]]
 1. A **ambient** lighting that is blue, simulates the color in the ocean. Which will illuminate all objects equally.
 ```cpp
 vec3 ambient = lightAmbient;
 ```
 
-2. A **diffuse** lighting depends on the angle between the **keep-changing-direction sunlight** and the surface normal. It simulates the light scattered in many directions when it hits a rough surface. It also combines with **caustic effect** that simulate the underwater caustics.
+2. A **diffuse** lighting depends on the angle between the **constantly changing-direction sunlight** and the surface normal. It simulates the light scattered in many directions when it hits a rough surface. It also combines with **caustic effect** that simulate the underwater caustics.
 ```cpp
 void updateIllumination() // called each frame
 {
@@ -58,6 +64,32 @@ const vec3 deepColor = vec3(0.0f, 0.1f, 0.3f);    // Dark blue
 vec3 waterColor = mix(shallowColor, deepColor, depth / 100.0f);
 vec3 finalLight = mix(waterColor, attenuatedLight, attenuation);
 FragColor = vec4(finalLight * texColor.rgb, 1.0);
+```
+
+##### Particle Shader
+
+A **red directional light** is also added to simulate the light from crater of the volcano, and be faded as it goes up.
+  
+![[Pasted image 20241212020534.png|500]]
+
+```cpp
+// Calculate direction to volcano
+vec3 toVolcano = normalize(FragPos - volcanoPosition);
+
+// Calculate alignment (cosine of angle)
+float alignment = dot(toVolcano, redLightDirection);
+
+// Beam effect using smoothstep
+float beamEffect = smoothstep(1.0 - beamWidth, 1.0, alignment);
+
+// Apply red light with beam effect
+float distanceToVolcano = length(FragPos - volcanoPosition);
+float falloff = exp(-distanceToVolcano * redLightFalloff);
+vec3 redLight = redLightColor * redLightIntensity * beamEffect * falloff;
+
+// Combine particle color with red light
+FragColor = vec4((texColor.rgb * particleColor.rgb + redLight) * alpha, texColor.a * alpha);
+
 ```
 
 #### Advanced Feature: Particle System
@@ -133,34 +165,61 @@ To better simulate the smoke from volcano, I build the whole particle system whi
 	float alpha = pow(LifetimePercent, 0.5); // Fade out faster near the end
 	```
 
-* A **red directional light** is also added to simulate the light from crater of the volcano, and be faded as it goes up.
-  
-	![[Pasted image 20241212020534.png|500]]
-	
-	```cpp
-	// Calculate direction to volcano
-    vec3 toVolcano = normalize(FragPos - volcanoPosition);
-
-    // Calculate alignment (cosine of angle)
-    float alignment = dot(toVolcano, redLightDirection);
-
-    // Beam effect using smoothstep
-    float beamEffect = smoothstep(1.0 - beamWidth, 1.0, alignment);
-
-    // Apply red light with beam effect
-    float distanceToVolcano = length(FragPos - volcanoPosition);
-    float falloff = exp(-distanceToVolcano * redLightFalloff);
-    vec3 redLight = redLightColor * redLightIntensity * beamEffect * falloff;
-
-    // Combine particle color with red light
-    FragColor = vec4((texColor.rgb * particleColor.rgb + redLight) * alpha, texColor.a * alpha);
-	```
-
 #### Scene Setup
-
-The scene is centered with an active volcano that is spreading out smoke from its crater. A group of fishes are swimming around the vivid smoke.
 ![[Pasted image 20241212020611.png]]
+The scene is centered with an active volcano that is spreading out smoke from its crater. 
+A group of fishes are swimming circularly around the vivid smoke, where each fish is a hierarchical model that is able to perform a simple animation by waving the head and fin.
+##### Fish Animation:
 
+```cpp
+float currentAngle = 0.0f;
+void updateAnimation()
+{
+	// Hierarichal Animation
+	// Fin and head of a fish rotate in a sinusoidal pattern
+	// relatively to the body
+	rotate_fin = 0.5f * sin(timeInSeconds*1.5);
+	rotate_body = 0.5f * sin(timeInSeconds*1.5 + glm::radians(45.0f));
+	rotate_head = 0.5f * sin(timeInSeconds*1.5 + glm::radians(90.0f));
+
+	// Swim circularly
+	const float rotationSpeed = 0.05f; // radians
+	const float deltaTime = 0.016f;
+	float radius = 4.0f;
+
+	currentAngle += rotationSpeed * deltaTime;
+	// Keep angle within [0, 2*PI]
+	if (currentAngle > glm::two_pi<float>()) { 
+		currentAngle -= glm::two_pi<float>();
+	}
+
+	for (int i = 0; i < fish_centers.size(); ++i)
+	{
+		glm::vec3 newPosition(
+			radius * cos(currentAngle), // X position on the circle
+			fish_centers[i].y - 5.0,               // Maintain the Y position and low down a bit
+			radius * sin(currentAngle)  // Z position on the circle
+		);
+
+		glm::vec3 forwardDirection(
+			-radius * sin(currentAngle), // Tangent X
+			0.0f,                        // Tangent Y (flat circle in XZ plane)
+			radius * cos(currentAngle)   // Tangent Z
+		);
+		forwardDirection = glm::normalize(forwardDirection);
+
+		glm::vec3 upVector(0.0f, 1.0f, 0.0f); // Assume Y is up
+		glm::vec3 rightVector = glm::normalize(glm::cross(upVector, forwardDirection));
+
+		glm::mat4 transform = glm::mat4(1.0f);
+		transform[0] = glm::vec4(rightVector, 0.0f);      // Right vector
+		transform[1] = glm::vec4(upVector, 0.0f);         // Up vector
+		transform[2] = glm::vec4(-forwardDirection, 0.0f); // Forward vector (negative Z)
+		transform[3] = glm::vec4(newPosition, 1.0f);      // Position
+		fish_transforms[i] = transform;
+	}
+}
+```
 
 #### Declaration
 
