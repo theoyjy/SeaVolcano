@@ -88,7 +88,8 @@ vector<ModelData> animation_meshes;
 GLfloat rotate_head = 0.0f, rotate_fin = 0.0f, rotate_body = 0.f;
 
 // whole translation for each fish model
-vector<glm::vec3> fish_translations(9, glm::vec3(0.0f));
+vector<glm::mat4> fish_transforms;
+vector<glm::vec3> fish_centers;
 
 #pragma region MESH LOADING
 /*----------------------------------------------------------------------------
@@ -261,7 +262,7 @@ GLuint CompileTerrianShader()
 	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "lightAmbient"), 0.3f, 0.3f, 0.3f);
 	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "lightDiffuse"), 1.5f, 1.5f, 1.5f);
 	glUniform1f(glGetUniformLocation(terrianShaderProgramID, "depthFalloff"), 0.00001f);
-	glUniform1f(glGetUniformLocation(terrianShaderProgramID, "causticIntensity"), 0.75f);
+	glUniform1f(glGetUniformLocation(terrianShaderProgramID, "causticIntensity"), 0.25f);
 	return terrianShaderProgramID;
 }
 #pragma endregion SHADER_FUNCTIONS
@@ -297,9 +298,6 @@ void generateObjectBufferMesh() {
 	LOAD MESH HERE AND COPY INTO BUFFERS
 	----------------------------------------------------------------------------*/
 
-	//Note: you may get an error "vector subscript out of range" if you are using this code for a mesh that doesnt have positions and normals
-	//Might be an idea to do a check for that before generating and binding the buffer.
-
 	// get all the static model paths
 	vector<string> StaticModelPaths = GetAllModelsInPath(STATIC_MODEL_FOLDER);
 	// load each model
@@ -310,6 +308,8 @@ void generateObjectBufferMesh() {
 
 	// get all the animation model paths
 	vector<string> animationModelPaths = GetAllModelsInPath(ANIMATION_FOLDER);
+	fish_transforms.resize(animationModelPaths.size(), glm::mat4(1.0f));
+	fish_centers.resize(animationModelPaths.size(), glm::vec3(0.0f));
 
 	// Load each animation model
 	for (size_t i = 0; i < animationModelPaths.size(); i++)
@@ -322,11 +322,6 @@ void generateObjectBufferMesh() {
 	GLuint loc1 = glGetAttribLocation(terrianShaderProgramID, "vertex_position");
 	GLuint loc2 = glGetAttribLocation(terrianShaderProgramID, "vertex_normal");
 	GLuint loc3 = glGetAttribLocation(terrianShaderProgramID, "tex_coords");
-	//if (loc1 == -1 || loc2 == -1 || loc3 == -1)
-	//{
-	//	std::cerr << "Error getting attribute location" << std::endl;
-	//	exit(1);
-	//}
 
 	function<void(ModelData&)> SetUpModelBuffers = [&](ModelData& model) {
 		glGenVertexArrays(1, &model.mVao);
@@ -352,8 +347,8 @@ void generateObjectBufferMesh() {
 		glVertexAttribPointer(loc3, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
 		glEnableVertexAttribArray(loc3);
 
-		glBindVertexArray(0); // unbind VAO
-		glBindBuffer(GL_ARRAY_BUFFER, 0); // unbind VBO
+		glBindVertexArray(0); 
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 		for (int j = 0; j < model.mChildMeshes.size(); ++j)
 		{
@@ -371,6 +366,11 @@ void generateObjectBufferMesh() {
 	
 	for (int i = 0; i < animationModelPaths.size(); ++i) {
 		SetUpModelBuffers(animation_meshes[i]);
+		for (const auto& vertex : animation_meshes[i].mVertices) {
+			fish_centers[i] += vertex;
+		}
+		// get average center of the fish
+		fish_centers[i] /= static_cast<float>(animation_meshes[i].mVertices.size());
 	}
 
 	
@@ -396,7 +396,7 @@ void renderModels()
 	int view_mat_loc = glGetUniformLocation(terrianShaderProgramID, "view");
 	int proj_mat_loc = glGetUniformLocation(terrianShaderProgramID, "proj");
 	
-	// update terrain uniforms & draw
+	//  update uniforms & draw
 	function<void(const ModelData&, glm::mat4&, bool)> UpdateNormalMeshUniforms = [&](const ModelData& mesh, glm::mat4& modelMatrix, bool isSmoke) {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, mesh.mTextureId);
@@ -408,14 +408,6 @@ void renderModels()
 
 		glUniform3f(glGetUniformLocation(terrianShaderProgramID, "viewPos"), cameraPosition.x, cameraPosition.y, cameraPosition.z);
 		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "texture1"), 0);
-
-		//uniform vec3 lightDirection;    // Direction of sunlight (normalized)
-		//uniform vec3 lightAmbient;      // Ambient light color					// static
-		//uniform vec3 lightDiffuse;      // Diffuse light color					// static
-		//uniform float depthFalloff;     // Light attenuation factor with depth
-		//uniform float causticIntensity; // Strength of sunlight caustics
-		//uniform float time;             // Animation time
-
 		glUniform3f(glGetUniformLocation(terrianShaderProgramID, "lightDirection"), lightDirection.x, lightDirection.y, lightDirection.z);
 		glUniform1f(glGetUniformLocation(terrianShaderProgramID, "time"), timeInSeconds);
 		
@@ -425,7 +417,7 @@ void renderModels()
 
 	glm::mat4 modelMat(1.0f);
 
-	// Draw terrain
+	// Draw static models
 	for (const auto& staticModel : staticModels)
 	{
 		UpdateNormalMeshUniforms(staticModel, modelMat, false);
@@ -434,15 +426,14 @@ void renderModels()
 	// Draw animation models
 	for (int i = 0; i < animation_meshes.size(); ++i)
 	{
-		// translate the root mesh
+		// rotate fish body first then translate
 		glm::mat4 rootMesh = glm::mat4(1.f);
 		rootMesh = glm::rotate(rootMesh, glm::radians(rotate_body), glm::vec3(0.0f, 1.0f, 0.0f));
-		rootMesh = glm::translate(rootMesh, fish_translations[i]);
+		rootMesh = rootMesh * fish_transforms[i];
 		UpdateNormalMeshUniforms(animation_meshes[i], rootMesh, false);
 
 		// body rotation not effect the child meshes
-		rootMesh = glm::mat4(1.f);
-		rootMesh = glm::translate(rootMesh, fish_translations[i]);
+		rootMesh = fish_transforms[i];
 
 		for (int j = 0; j < animation_meshes[i].mChildMeshes.size(); ++j)
 		{
@@ -464,19 +455,15 @@ void renderModels()
 			UpdateNormalMeshUniforms(childMesh, child, false);
 		}
 	}
-
-	// renderBitmapText(-1.0, 0.9, GLUT_BITMAP_HELVETICA_18, "The scene consists of a shining volcano, swiming fishes, smoke out of volcano, rocks, coral");
-	// renderBitmapText(-1.0, 0.85, GLUT_BITMAP_HELVETICA_18, "All the fishes are moving towards its heading direction");
-	// renderBitmapText(-1.0, 0.8, GLUT_BITMAP_HELVETICA_18, "Each Fish contains hierarchical meshes that fin and head would move relatively to its body");
-	// renderBitmapText(-1.0, 0.75, GLUT_BITMAP_HELVETICA_18, "Key Control : W(forward) S(backward) A(left) D(right) Q(upward) E(downward). Shift + Key Control : Speed up");
-	// renderBitmapText(-1.0, 0.7, GLUT_BITMAP_HELVETICA_18, "Mouse Control : Left click and drag to control camera's yaw and pitch");
 }
 
 void display() {
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glClearColor(0.004f, 0.361f, 0.588f, 0.8f); // Background color to blue
+	// Background color to blue
+	glClearColor(0.004f, 0.361f, 0.588f, 0.8f);
 
+	// update view matrix
 	glm::vec3 forward(0.0);
 	forward.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
 	forward.y = sin(glm::radians(pitch));
@@ -493,18 +480,6 @@ void display() {
 
 
 const float PI = 3.14159265358979323846f;
-const vector<glm::vec3> fish_translate_directions = { 
-	glm::vec3(0.0f, 0.0f, -0.1f), 
-	glm::vec3(0.1f, 0.0f, -0.1f),
-	glm::vec3(0.1f, 0.0f, -0.1f),
-	glm::vec3(-0.1f, 0.0f, -0.1f),
-	glm::vec3(-0.1f, 0.0f, 0.0f),
-	glm::vec3(0.1f, 0.0f, -0.1f),
-	glm::vec3(0.1f, 0.0f, -0.1f),
-	glm::vec3(-0.1f, 0.0f, 0.1f),
-	glm::vec3(-0.1f, 0.0f, -0.1f),
-};
-
 
 void updateIllumination()
 {
@@ -516,22 +491,55 @@ void updateIllumination()
 		10.0f * cos(timeInSeconds * 2.0)  // Faster horizontal oscillation
 	);
 
-	// Calculate light direction (normalized)
+	// Calculate light direction based on the position of the light
 	lightDirection = glm::normalize(lightPosition - glm::vec3(0.0f));
 }
 
-
+float currentAngle = 0.0f;
 void updateAnimation()
 {
 	// Fin and head of a fish rotate in a sinusoidal pattern
-	rotate_fin = 0.4f * sin(timeInSeconds);
-	rotate_body = 0.4f * sin(timeInSeconds + PI / 4.0f);
-	rotate_head = 0.4f * sin(timeInSeconds + PI / 2.0f);
+	rotate_fin = 0.5f * sin(timeInSeconds*1.5);
+	rotate_body = 0.5f * sin(timeInSeconds*1.5 + glm::radians(45.0f));
+	rotate_head = 0.5f * sin(timeInSeconds*1.5 + glm::radians(90.0f));
 
-	for (int i = 0; i < fish_translations.size(); ++i)
-	{
-		fish_translations[i] += fish_translate_directions[i] * 0.01f;
+
+	const float rotationSpeed = 0.05f; // radians
+	const float deltaTime = 0.016f;
+	float radius = 4.0f;
+
+	currentAngle += rotationSpeed * deltaTime;
+	// Keep angle within [0, 2*PI]
+	if (currentAngle > glm::two_pi<float>()) { 
+		currentAngle -= glm::two_pi<float>();
 	}
+
+	for (int i = 0; i < fish_centers.size(); ++i)
+	{
+		glm::vec3 newPosition(
+			radius * cos(currentAngle), // X position on the circle
+			fish_centers[i].y - 5.0,               // Maintain the Y position and low down a bit
+			radius * sin(currentAngle)  // Z position on the circle
+		);
+
+		glm::vec3 forwardDirection(
+			-radius * sin(currentAngle), // Tangent X
+			0.0f,                        // Tangent Y (flat circle in XZ plane)
+			radius * cos(currentAngle)   // Tangent Z
+		);
+		forwardDirection = glm::normalize(forwardDirection);
+
+		glm::vec3 upVector(0.0f, 1.0f, 0.0f); // Assume Y is up
+		glm::vec3 rightVector = glm::normalize(glm::cross(upVector, forwardDirection));
+
+		glm::mat4 transform = glm::mat4(1.0f);
+		transform[0] = glm::vec4(rightVector, 0.0f);      // Right vector
+		transform[1] = glm::vec4(upVector, 0.0f);         // Up vector
+		transform[2] = glm::vec4(-forwardDirection, 0.0f); // Forward vector (negative Z)
+		transform[3] = glm::vec4(newPosition, 1.0f);      // Position
+		fish_transforms[i] = transform;
+	}
+
 }
 
 void updateScene() {
@@ -542,12 +550,16 @@ void updateScene() {
 	// Elapsed time in seconds
 	timeInSeconds = (currentTime - startTime).count() * 1e-9;
 
+	// update sun light position and direction
 	updateIllumination();
 
+	// update fish animation
 	updateAnimation();
 
+	// update smoke particles
 	ParticleSystem::Instance()->updateParticles(0.01, 3);
     
+	// Update the camera position based on user input
 	keyControl::updateCameraPosition();
 
     glutPostRedisplay();

@@ -14,7 +14,7 @@ uniform mat4 view;
 uniform float lifetime;
 
 void main() {
-    float currentScale = mix(150, 20, pow(instanceLifetimePercent, 2.0));
+    float currentScale = mix(50, 150, pow(instanceLifetimePercent, 1.5));
     TexCoords = texCoords;
     gl_Position = projection * view * vec4(vertex * currentScale + instanceOffset, 1.0);
     LifetimePercent = instanceLifetimePercent;

@@ -164,9 +164,6 @@
     <ClInclude Include="TextureManager.h" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="animationVertexShader.txt" />
-    <Text Include="fogFragmentShader.txt" />
-    <Text Include="fogVertexShader.txt" />
     <Text Include="particleFragmentShader.txt" />
     <Text Include="particleVertexSharder.txt" />
     <Text Include="simpleFragmentShader.txt" />

@@ -11,10 +11,10 @@
 #include "TextureManager.h"
 #include "ShaderUtility.h"
 
-// Update particles
+// Random number generator for particles
 std::mt19937 rng(std::random_device{}());
-std::uniform_real_distribution<float> horizontalDist(-3.f, 3.f); // Small horizontal spread
-std::uniform_real_distribution<float> verticalDist(5.f, 15.f);    // Upward velocity
+std::uniform_real_distribution<float> horizontalDist(-5.f, 5.f); // Small horizontal spread
+std::uniform_real_distribution<float> verticalDist(12.f, 25.f);    // Upward velocity
 
 
 // Particle structure
@@ -27,7 +27,6 @@ struct Particle {
 
 class ParticleSystem {
 
-    // singleton
 private:
     ParticleSystem() {}
 
@@ -46,11 +45,10 @@ public:
     std::vector<Particle> particles;
 
 
-    // OpenGL data
     GLuint particleVAO, particleVBO, offsetVBO, lifeTimeVBO;
     GLuint shaderProgram;
     GLuint particleTexture;
-    glm::vec3 startPosition{ 4.3, 40, -0.5 };
+    glm::vec3 startPosition{ 4.3, 40, -0.5 }; // crater of the volcano
 
 
     void Init() {
@@ -68,12 +66,13 @@ public:
 
 
     void updateParticles(float deltaTime, int NewParticlePerFrame) {
-
-
-        static int particleIndex = 0; // To track which particle to reset
+        // track which particle to reset
+        static int particleIndex = 0; 
         int searched = 0;
         for (int i = 0; i < NewParticlePerFrame; ++i) {
+
             searched++;
+            // if particle is still alive, skip and --i to try again
             if (particles[particleIndex].lifetime > 0.0f)
             {
                 if (searched > NUM_PARTICLES)
@@ -82,18 +81,21 @@ public:
                     break;
                 }
                 --i;
-                particleIndex = (particleIndex + 1) % NUM_PARTICLES; // Wrap around
+                particleIndex = (particleIndex + 1) % NUM_PARTICLES; 
                 continue;
             }
+
+            // particle is dead, reset it
             if (particles[particleIndex].lifetime <= 0.0f)
             {
                 // Reset a particle
                 Particle& p = particles[particleIndex];
-                p.position = startPosition + glm::vec3(horizontalDist(rng), 0.0f, horizontalDist(rng));; // Start at the origin
+                // start from crater of the volcano
+                p.position = startPosition + glm::vec3(horizontalDist(rng), 0.0f, horizontalDist(rng));
                 p.velocity = glm::vec3(horizontalDist(rng), verticalDist(rng), horizontalDist(rng)); // Mostly upward velocity
                 p.lifetime = PARTICLE_LIFETIME;
             }
-            particleIndex = (particleIndex + 1) % NUM_PARTICLES; // Wrap around
+            particleIndex = (particleIndex + 1) % NUM_PARTICLES;
         }
 
         // Update all particles
@@ -101,7 +103,7 @@ public:
         for (auto& p : particles) {
             if (p.lifetime > 0.0f) {
 
-                // 加入随机扰动
+                // randomize the velocity a bit
                 float randomX = ((rand() % 100) / 100.0f - 0.5f) * 0.01f;
                 float randomZ = ((rand() % 100) / 100.0f - 0.5f) * 0.01f;
                 p.velocity.x += randomX;
@@ -113,7 +115,6 @@ public:
         }
     }
 
-    // Initialize OpenGL
     void initOpenGL() {
 
         particleTexture = TextureManager::Instance()->LoadTexture("Assets/texture.png");
@@ -146,28 +147,30 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, particleVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
 
-        // Position attribute
+        // Position
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
 
-        // Texture coordinate attribute
+        // Texture coordinate
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(2);
 
+        // Particle world position
         glBindBuffer(GL_ARRAY_BUFFER, offsetVBO);
         glBufferData(GL_ARRAY_BUFFER, NUM_PARTICLES * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
         glEnableVertexAttribArray(1);
-        glVertexAttribDivisor(1, 1); // This is per-instance data
+        glVertexAttribDivisor(1, 1);
 
+        // Particle lifetime
         glBindBuffer(GL_ARRAY_BUFFER, lifeTimeVBO);
         glBufferData(GL_ARRAY_BUFFER, NUM_PARTICLES * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
         glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(float), (void*)0);
         glEnableVertexAttribArray(3);
-        glVertexAttribDivisor(3, 1); // This is per-instance data
+        glVertexAttribDivisor(3, 1);
 
-
-        // load vertex shader by path to const char * 
+        
+        // load and compile particle shader
         const char* vertexSource = readShaderSource("particleVertexSharder.txt");
         const char* fragmentSource = readShaderSource("particleFragmentShader.txt");
 
@@ -193,22 +196,24 @@ public:
     }
 
     void renderParticles() {
-        // Cull invisible particles
+
+        // only render alive particles
         std::vector<glm::vec3> offsets;
         std::vector<float> lifeTimes;
         for (const auto& p : particles) {
-            if (p.lifetime > 0.0f) { // Example culling
+            if (p.lifetime > 0.0f) {
                 offsets.push_back(p.position);
-                lifeTimes.push_back(p.lifetime / PARTICLE_LIFETIME);
+                lifeTimes.push_back((PARTICLE_LIFETIME - p.lifetime)/ PARTICLE_LIFETIME);
             }
         }
 
-        if (offsets.empty()) return; // No particles to render
+        // No particles to render yet
+        if (offsets.empty()) return; 
 
         glUseProgram(shaderProgram);
         glBindVertexArray(particleVAO);
 
-        // Update offsets using persistent mapping
+        // Update particle position buffer
         glBindBuffer(GL_ARRAY_BUFFER, offsetVBO);
         glm::vec3* mappedBuffer = static_cast<glm::vec3*>(
             glMapBufferRange(GL_ARRAY_BUFFER, 0, offsets.size() * sizeof(glm::vec3),
@@ -233,7 +238,6 @@ public:
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, particleTexture);
         glUniform1i(glGetUniformLocation(shaderProgram, "particleTexture"), 0);
-
 
 
         // Draw instanced particles

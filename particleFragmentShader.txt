@@ -19,9 +19,9 @@ const float beamWidth = 0.5f;                      // Wider beam
 
 void main() {
     // Sample particle texture and apply alpha fading
-    float alpha = pow(LifetimePercent, 0.5); // Fade out faster near the end
+    float alpha = pow(LifetimePercent, 0.5);
     vec4 texColor = texture(particleTexture, TexCoords) * vec4(1.0, 1.0, 1.0, alpha);
-    if (texColor.a < 0.1) discard; // Optional: Discard low alpha pixels
+    if (texColor.a < 0.1) discard; // Discard low alpha pixels
 
     // Calculate direction to volcano
     vec3 toVolcano = normalize(FragPos - volcanoPosition);

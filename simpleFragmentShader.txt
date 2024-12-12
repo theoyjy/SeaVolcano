@@ -29,6 +29,9 @@ void main() {
     // Normalize input vectors
     vec3 norm = normalize(Normal);
     vec3 lightDir = normalize(-lightDirection);
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+
 
     // Ambient lighting
     vec3 ambient = lightAmbient;
@@ -38,10 +41,14 @@ void main() {
     float causticEffect = caustics(FragPos) * causticIntensity;
     vec3 diffuse = lightDiffuse * diff * causticEffect;
 
+    // Specular lighting
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64);
+    vec3 specular = vec3(0.8, 0.8, 1.0) * spec;
+
     // Light attenuation based on depth
     float depth = abs(FragPos.y-50);
     float attenuation = exp(-depth * depthFalloff);
-    vec3 attenuatedLight = (ambient + diffuse) * attenuation;
+    vec3 attenuatedLight = (ambient + diffuse + specular) * attenuation;
 
     // Calculate water color based on depth
     const vec3 shallowColor = vec3(0.0f, 0.4f, 0.8f); // Bright blue

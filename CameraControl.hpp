@@ -13,12 +13,12 @@
 
 using namespace std;
 
-const glm::vec3 cameraDefaultPosition(1.44838, 65, 105.3027);
+const glm::vec3 cameraDefaultPosition(0, 48, 216);
 //const glm::vec3 cameraDefaultPosition(0, 0,10);
 glm::vec3 cameraPosition = cameraDefaultPosition; // Camera position in world space
 
 const float defaultYaw = -90;
-const float defaultPitch = -13;
+const float defaultPitch = 0;
 float yaw = defaultYaw;  // Horizontal rotation (around Y-axis)
 float pitch = defaultPitch; // Vertical rotation (around X-axis)
 

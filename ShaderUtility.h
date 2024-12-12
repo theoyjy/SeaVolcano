@@ -99,7 +99,7 @@ static void linkShader(GLuint programID)
 	glUseProgram(programID);
 };
 
-// Shader compilation utility
+
 GLuint compileShader(const char* source, GLenum type) {
 	GLuint shader = glCreateShader(type);
 	glShaderSource(shader, 1, &source, nullptr);

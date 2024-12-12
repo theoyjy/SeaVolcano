@@ -52,15 +52,6 @@
     <Text Include="particleFragmentShader.txt">
       <Filter>Resource Files</Filter>
     </Text>
-    <Text Include="fogFragmentShader.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="fogVertexShader.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="animationVertexShader.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
     <Text Include="simpleVertexShader.txt">
       <Filter>Resource Files</Filter>
     </Text>
