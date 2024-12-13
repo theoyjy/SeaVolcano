@@ -13,7 +13,7 @@ private:
     ~TextureManager() {}
     
 public:
-    // disable copy constructor and assign constructor
+    // singleton
     TextureManager(const TextureManager&) = delete;
     TextureManager& operator=(const TextureManager&) = delete;
     
@@ -48,14 +48,15 @@ public:
         GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
         if(nrChannels == 1)
         {
+            // only 1 channel, expand to 3 channels
             size_t imageSize = width * height;
             std::vector<unsigned char> rgbData(imageSize * 3); 
-            // 将灰度值扩展到 RGB
+           
             for (size_t i = 0; i < imageSize; ++i) {
-                unsigned char gray = data[i]; // 原灰度值
-                rgbData[i * 3 + 0] = gray;   // R 通道
-                rgbData[i * 3 + 1] = gray;   // G 通道
-                rgbData[i * 3 + 2] = gray;   // B 通道
+                unsigned char gray = data[i]; 
+                rgbData[i * 3 + 0] = gray;   
+                rgbData[i * 3 + 1] = gray;   
+                rgbData[i * 3 + 2] = gray;
             }
             glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, rgbData.data());
         }
@@ -63,7 +64,9 @@ public:
         {
             glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
         }
+        // Free image memory and store in cache
         stbi_image_free(data);
+        textureCache[path] = textureID;
 
         glGenerateMipmap(GL_TEXTURE_2D);
 
@@ -73,8 +76,6 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-        // Free image memory and store in cache
-        textureCache[path] = textureID;
 
         return textureID;
     }

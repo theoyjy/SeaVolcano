@@ -34,6 +34,8 @@ namespace fs = std::filesystem;
 #include "ParticleSystem.h"
 #include "ShaderUtility.h"
 #include "ProgramSetting.h"
+#include "ModelStructure.h"
+#include "lava.h"
 #include <functional>
 
 /*----------------------------------------------------------------------------
@@ -43,42 +45,14 @@ MESH TO LOAD
 // put the mesh in your project directory, or provide a filepath for it here
 
 
-#define ANIMATION_FOLDER "Assets/animationModels/"
+#define CRAB_FOLDER "Assets/Crabs/"
 #define STATIC_MODEL_FOLDER "Assets/StaticModels/"
 #define FISH_MODEL "Assets/animationModels/Fish.fbx"
+#define LAVA_TEXTURE "Assets/Textures/lava.jpg"
 
 /*----------------------------------------------------------------------------
 ----------------------------------------------------------------------------*/
 using namespace std;
-
-#pragma region SimpleTypes
-
-struct FishInstance {
-	float angle = 0.f;        // Current angle along the circular path
-	float speed = 0.f;        // Speed of this fish
-	float radius = 0.f;       // Radius of the circular path
-	float y = 0.f;            // Vertical offset for the fish's circle
-};
-
-
-typedef struct ModelData
-{
-	size_t mPointCount = 0;
-	GLuint mVao = 0;
-	GLuint instanceVBO;
-	vector<glm::vec3> mVertices;
-	vector<glm::vec3> mNormals;
-	vector<glm::vec4> mColors;
-	vector<glm::vec2> mTextureCoords;
-	glm::mat4 mLocalTransform;
-
-	string mTexturePath;
-	GLuint mTextureId;
-
-	vector<ModelData> mChildMeshes;
-	
-} ModelData;
-#pragma endregion SimpleTypes
 
 
 
@@ -89,21 +63,9 @@ float timeInSeconds = 0.0f;
 GLuint terrianShaderProgramID;
 
 // all the meshes in the scene
-vector<ModelData> staticModels;
+
 //ModelData smoke_mesh;
 //vector<ModelData> animation_meshes;
-ModelData fishModel;
-
-// fish hierarchical mesh rotation for each fish part
-GLfloat rotate_head = 0.0f, rotate_fin = 0.0f, rotate_body = 0.f;
-
-// whole translation for each fish model
-vector<glm::mat4> fish_transforms;
-vector<glm::vec3> fish_centers;
-vector<FishInstance> fishInstances;
-vector<glm::mat4> fishInstanceTransforms;
-#define FISHCOUNT 30
-
 
 #pragma region MESH LOADING
 /*----------------------------------------------------------------------------
@@ -276,7 +238,7 @@ GLuint CompileTerrianShader()
 	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "lightAmbient"), 0.3f, 0.3f, 0.3f);
 	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "lightDiffuse"), 1.5f, 1.5f, 1.5f);
 	glUniform1f(glGetUniformLocation(terrianShaderProgramID, "depthFalloff"), 0.00001f);
-	glUniform1f(glGetUniformLocation(terrianShaderProgramID, "causticIntensity"), 0.25f);
+	glUniform1f(glGetUniformLocation(terrianShaderProgramID, "causticIntensity"), 0.6f);
 	return terrianShaderProgramID;
 }
 #pragma endregion SHADER_FUNCTIONS
@@ -346,7 +308,7 @@ void InitializeFishInstances()
 		instance.angle = 0.3f * glm::two_pi<float>() * i;
 		instance.speed = 0.075f;
 		instance.radius = 40.f + 1.f * i;
-		instance.y = 40.f + 5.f * i; // Random y-value between -5 and 5
+		instance.y = 40.f + 5.f * i;
 		CalcFishInstanceTransform(instance, fishInstanceTransforms[int(i)]);
 		fishInstances.push_back(instance);
 	}
@@ -365,52 +327,71 @@ void generateObjectBufferMesh() {
 		 staticModels.push_back(load_mesh(path.c_str(), false));
 	}
 
-	// get all the animation model paths
-	//vector<string> animationModelPaths = GetAllModelsInPath(ANIMATION_FOLDER);
-	//fish_transforms.resize(animationModelPaths.size(), glm::mat4(1.0f));
-	//fish_centers.resize(animationModelPaths.size(), glm::vec3(0.0f));
+	const vector<pair<glm::vec3, glm::vec3>> CrabInitData = {
+		{{ -65, 8, 30}, {0, glm::radians(-64.8), 0}},
+		{{ -94, 9, 23}, {0, glm::radians(74.f), 0}},
+		{{ -93, 9, 14}, {0, glm::radians(-30.f), 0}},
+		{{ -93,7, 17}, {0, glm::radians(-53.f), 0}},
+		{{ -84.4,7,24.7}, {0, glm::radians(119.f), 0}}
+	};
 
-	// Load each animation model
-	//for (size_t i = 0; i < animationModelPaths.size(); i++)
-	//{
-	//	animation_meshes.push_back(load_mesh(animationModelPaths[i].c_str(), true));
-	//}
+	vector<string> CrabsPaths = GetAllModelsInPath(CRAB_FOLDER);
+	// load each model
+	for (int i = 0; i < CrabsPaths.size(); ++i)
+	{
+		Crab crab;
+		crab.model = load_mesh(CrabsPaths[i].c_str(), false);
+		for (const auto& vertex : crab.model.mVertices)
+		{
+			crab.translation += vertex;
+		}
+		crab.translation /= static_cast<float>(crab.model.mVertices.size());
+		crab.translation = CrabInitData[i].first;
+		crab.rotation = CrabInitData[i].second;
+		CrabModels.emplace_back(crab);
+	}
 
 	fishModel = load_mesh(FISH_MODEL, true);
 	InitializeFishInstances();
+
+	// Generate lava mesh
+	lavaModel = generateLavaPlane(lavaWidth, lavaWidth, 100, 100);
+	lavaModel.mTexturePath = LAVA_TEXTURE;
+	lavaModel.mTextureId = TextureManager::Instance()->LoadTexture(LAVA_TEXTURE);
 
 	// Set up the VAO and VBOs for terrain and all animation models
 	GLuint loc1 = glGetAttribLocation(terrianShaderProgramID, "vertex_position");
 	GLuint loc2 = glGetAttribLocation(terrianShaderProgramID, "vertex_normal");
 	GLuint loc3 = glGetAttribLocation(terrianShaderProgramID, "tex_coords");
 
-	function<void(ModelData&,bool)> SetUpModelBuffers = [&](ModelData& model, bool bInstance) {
+	function<void(ModelData&, Type)> SetUpModelBuffers = [&](ModelData& model, Type type) {
 		glGenVertexArrays(1, &model.mVao);
 		glBindVertexArray(model.mVao);
-		GLuint vbos[3] = { 0, 0, 0};
-		glGenBuffers(3, vbos);
+		glGenBuffers(3, model.mVBOs);
+		glGenBuffers(1, &model.mEBO);
+
 
 		// Vertices VBO
-		glBindBuffer(GL_ARRAY_BUFFER, vbos[0]);
-		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec3), model.mVertices.data(), GL_STATIC_DRAW);
+		glBindBuffer(GL_ARRAY_BUFFER, model.mVBOs[0]);
+		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec3), model.mVertices.data(), type == Type::LAVA? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
 		glVertexAttribPointer(loc1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
 		glEnableVertexAttribArray(loc1);
 
 		// Normals VBO
-		glBindBuffer(GL_ARRAY_BUFFER, vbos[1]);
+		glBindBuffer(GL_ARRAY_BUFFER, model.mVBOs[1]);
 		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec3), model.mNormals.data(), GL_STATIC_DRAW);
 		glVertexAttribPointer(loc2, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
 		glEnableVertexAttribArray(loc2);
 
 		// Texture VBO
-		glBindBuffer(GL_ARRAY_BUFFER, vbos[2]);
+		glBindBuffer(GL_ARRAY_BUFFER, model.mVBOs[2]);
 		glBufferData(GL_ARRAY_BUFFER, model.mPointCount * sizeof(glm::vec2), model.mTextureCoords.data(), GL_STATIC_DRAW);
 		glVertexAttribPointer(loc3, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
 		glEnableVertexAttribArray(loc3);
 
-
-		if (bInstance)
+		switch (type)
 		{
+		case Type::FISH: // Instance
 			glGenBuffers(1, &model.instanceVBO);
 			glBindBuffer(GL_ARRAY_BUFFER, model.instanceVBO);
 
@@ -423,6 +404,14 @@ void generateObjectBufferMesh() {
 				glEnableVertexAttribArray(3 + i);
 				glVertexAttribDivisor(3 + i, 1); // Tell OpenGL this is per-instance data
 			}
+			break;
+		case Type::LAVA:
+			// EBO
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model.mEBO);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, model.mIndices.size() * sizeof(unsigned int), model.mIndices.data(), GL_STATIC_DRAW);
+			break;
+		default:
+			break;
 		}
 
 		glBindVertexArray(0); 
@@ -430,29 +419,28 @@ void generateObjectBufferMesh() {
 
 		for (int j = 0; j < model.mChildMeshes.size(); ++j)
 		{
-			SetUpModelBuffers(model.mChildMeshes[j], bInstance);
+			SetUpModelBuffers(model.mChildMeshes[j], type);
 		}
 	};
 
 	glUseProgram(terrianShaderProgramID);
 	for(auto& model : staticModels)
 	{
-		SetUpModelBuffers(model, false);
+		SetUpModelBuffers(model, Type::STATIC);
 	}
-	
-	SetUpModelBuffers(fishModel, true);
-	
-	//for (int i = 0; i < animationModelPaths.size(); ++i) {
-	//	SetUpModelBuffers(animation_meshes[i]);
-	//	for (const auto& vertex : animation_meshes[i].mVertices) {
-	//		fish_centers[i] += vertex;
-	//	}
-	//	// get average center of the fish
-	//	fish_centers[i] /= static_cast<float>(animation_meshes[i].mVertices.size());
-	//}
+
+	for (auto& crab : CrabModels)
+	{
+		SetUpModelBuffers(crab.model, Type::CRAB);
+	}
 
 	
-	cout << "finish generate object buffer mesh\n";
+	SetUpModelBuffers(fishModel, Type::FISH);
+	
+	SetUpModelBuffers(lavaModel, Type::LAVA);
+
+	
+	std::cout << "finish generate object buffer mesh\n";
 
 }
 
@@ -472,7 +460,7 @@ void renderModels()
 	glUseProgram(terrianShaderProgramID);
 
 	// following uniforms set up once per frame
-	glUniformMatrix4fv(glGetUniformLocation(terrianShaderProgramID, "proj"), 1, GL_FALSE, persp_proj.m);
+	glUniformMatrix4fv(glGetUniformLocation(terrianShaderProgramID, "proj"), 1, GL_FALSE, glm::value_ptr(persp_proj));
 	glUniformMatrix4fv(glGetUniformLocation(terrianShaderProgramID, "view"), 1, GL_FALSE, glm::value_ptr(view));
 	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "viewPos"), cameraPosition.x, cameraPosition.y, cameraPosition.z);
 	glUniform3f(glGetUniformLocation(terrianShaderProgramID, "lightDirection"), lightDirection.x, lightDirection.y, lightDirection.z);
@@ -481,7 +469,7 @@ void renderModels()
 
 	int matrix_loc = glGetUniformLocation(terrianShaderProgramID, "model");
 	//  update uniforms & draw
-	function<void(const ModelData&, glm::mat4&)> UpdateShaderVariables = [&](const ModelData& mesh, glm::mat4& modelMatrix) {
+	function<void(const ModelData&, glm::mat4&, Type)> UpdateShaderVariables = [&](const ModelData& mesh, glm::mat4& modelMatrix, Type type) {
 		// bind texture
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, mesh.mTextureId);
@@ -491,10 +479,15 @@ void renderModels()
 		// update common uniforms
 		glUniformMatrix4fv(matrix_loc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
 		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "texture1"), 0);
-		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "isInstanced"), false);
-
-		glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(mesh.mPointCount));
-
+		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "type"), int(type));
+		if (type == Type::LAVA)
+		{
+			glDrawElements(GL_TRIANGLES, mesh.mIndices.size(), GL_UNSIGNED_INT, 0);
+		}
+		else
+		{
+			glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(mesh.mPointCount));
+		}
 		// Cleanup
 		glBindVertexArray(0);
 		glBindTexture(GL_TEXTURE_2D, 0);
@@ -512,15 +505,13 @@ void renderModels()
 		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "texture1"), 0);
 
 		// bind isInstanced flag
-		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "isInstanced"), true);
+		glUniform1i(glGetUniformLocation(terrianShaderProgramID, "type"), int(Type::FISH));
 
 		// Update instance mesh
 		if (!fishInstances.empty() && mesh.instanceVBO != 0)
 		{
 			// Bind the instance VBO
 			glBindBuffer(GL_ARRAY_BUFFER, mesh.instanceVBO);
-			std::cout << "Size of FishInstance: " << sizeof(FishInstance) << std::endl;
-			std::cout << "Size of glm::mat4: " << sizeof(glm::mat4) << std::endl;
 
 			// Map the buffer and copy new instance data
 			glm::mat4* mappedBuffer = static_cast<glm::mat4*>(
@@ -544,23 +535,38 @@ void renderModels()
 	// Draw static models
 	for (const auto& staticModel : staticModels)
 	{
-		UpdateShaderVariables(staticModel, modelMat);
+		UpdateShaderVariables(staticModel, modelMat, Type::STATIC);
 	}
 
-	// Draw fish animation
+	// Draw crabs
+	for (const auto& crab : CrabModels)
+	{
+		modelMat = crab.GetModelTransform();
+		UpdateShaderVariables(crab.model, modelMat, Type::CRAB);
+	}
 
+	// Draw lava
+	modelMat = glm::mat4(1.0f);
+	modelMat = glm::translate(modelMat, lavaPosition);
+	UpdateShaderVariables(lavaModel, modelMat, Type::LAVA);
+
+
+	// Draw instanced fish animation 
+	// Calcualte the fish body rotation matrix
 	glm::mat4 rotateBodyMtx = glm::mat4(1.f);
 	rotateBodyMtx = glm::rotate(rotateBodyMtx, glm::radians(rotate_body), glm::vec3(0.0f, 1.0f, 0.0f));
 	vector<glm::mat4> TmpTransforms(FISHCOUNT, rotateBodyMtx);
 
+	// Calculate the transforms of all fish body instances
 	std::transform(fishInstanceTransforms.begin(), fishInstanceTransforms.end(), TmpTransforms.begin(),
 		[&](const glm::mat4& transform) { return transform * rotateBodyMtx; });
 
+	// pass transforms to the shader
 	UpdateAnimationInstances(fishModel, TmpTransforms);
 
 	for (int i = 0; i < fishModel.mChildMeshes.size(); ++i)
 	{
-		// rotate the child mesh
+		//  Calcualte the child rotation matrix
 		auto& childMesh = fishModel.mChildMeshes[i];
 		glm::mat4 rotateChildMtx(1.0);
 		if (i == 0) // first child mesh is the head
@@ -572,9 +578,11 @@ void renderModels()
 			rotateChildMtx = glm::rotate(rotateChildMtx, glm::radians(rotate_fin), glm::vec3(0.0f, 1.0f, 0.0f));
 		}
 		
+		// Calculate the transforms of all child instances for the same part
 		std::transform(fishInstanceTransforms.begin(), fishInstanceTransforms.end(), TmpTransforms.begin(),
 			[&](const glm::mat4& transform) { return transform * rotateBodyMtx * fishModel.mChildMeshes[i].mLocalTransform * rotateChildMtx; });
 	
+		// pass transforms of child instances to the shader
 		UpdateAnimationInstances(childMesh, TmpTransforms);
 	}
 }
@@ -638,6 +646,39 @@ void updateAnimation()
 
 }
 
+float NormalizeAngle(float angle) {
+	while (angle > glm::pi<float>()) angle -= glm::two_pi<float>();
+	while (angle < -glm::pi<float>()) angle += glm::two_pi<float>();
+	return angle;
+}
+
+void updateCrabMovement() {
+	const float deltaTime = 0.016f;
+
+	for (auto& crab : CrabModels) 
+	{
+		if (crab.runAway) 
+		{
+			glm::vec3 direction = glm::normalize(crab.CurrentPosition() - cameraPosition);
+			crab.translation += direction * crab.velocity * deltaTime;
+
+			/// Update crab's rotation to "face away" from the camera
+			float targetYaw = NormalizeAngle((atan2(direction.x, direction.z))); // Yaw angle for local Y-axis rotation
+
+			// Smoothly interpolate rotation to target
+			if(crab.runAwayTime  >= (RUNAWAYTIME / 2.f))
+				crab.rotation.y = crab.rotation.y + NormalizeAngle(targetYaw - crab.rotation.y) * (RUNAWAYTIME - crab.runAwayTime) / RUNAWAYTIME * 2.f;
+
+			// Stop movement after a certain distance
+			cout << "Crab run away time: " << crab.runAwayTime << endl;
+			if (crab.runAwayTime <= 0.f) {
+				crab.runAway = false; // Stop the crab
+			}
+			crab.runAwayTime -= deltaTime;
+		}
+	}
+}
+
 void updateScene() {
 
 	static auto lastTime = std::chrono::high_resolution_clock::now();
@@ -652,8 +693,15 @@ void updateScene() {
 	// update fish animation
 	updateAnimation();
 
+	// update crab movement
+	updateCrabMovement();
+
 	// update smoke particles
 	ParticleSystem::Instance()->updateParticles(0.01, 3);
+
+	// update lava
+	updatePlaneVerticesWithHeight(lavaModel, 100, 100, timeInSeconds);
+
     
 	// Update the camera position based on user input
 	keyControl::updateCameraPosition();
@@ -690,6 +738,7 @@ int main(int argc, char** argv) {
 	glutSpecialUpFunc(keyControl::specialKeyRelease);
 	glutMouseFunc(keyControl::mouseButton);
 	glutMotionFunc(keyControl::mouseMotion);
+
 
 	// A call to glewInit() must be done after glut is initialized!
 	GLenum res = glewInit();

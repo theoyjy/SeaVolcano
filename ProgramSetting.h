@@ -11,3 +11,5 @@ float causticIntensity;
 
 glm::vec3 lightSpecular;
 glm::vec3 lightDiffuse;
+
+

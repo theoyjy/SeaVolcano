@@ -10,6 +10,7 @@
 #include <gtc/quaternion.hpp>
 
 #include "ProgramSetting.h"
+#include "ModelStructure.h"
 
 using namespace std;
 
@@ -27,7 +28,7 @@ int lastMouseX = 0, lastMouseY = 0;
 float angleX = 0.0f, angleY = 0.0f;
 
 // camera projection matrix used in shader
-const mat4 persp_proj = perspective(45.0f, (float)width / (float)height, 0.1f, 1000.0f);
+const glm::mat4 persp_proj = glm::perspective(45.0f, (float)width / (float)height, 0.1f, 1000.0f);
 glm::mat4 view;
 
 
@@ -110,11 +111,51 @@ namespace keyControl
 		cout << "cameraPosition: " << cameraPosition.x << " " << cameraPosition.y << " " << cameraPosition.z << endl;
 	}
 
+	void calculateRayFromScreen(float mouseX, float mouseY, glm::vec3& rayOrigin, glm::vec3& rayDirection) {
+		// Normalize mouse coordinates
+		float normalizedX = (2.0f * mouseX) / width - 1.0f;
+		float normalizedY = 1.0f - (2.0f * mouseY) / height;
+
+		// Create clip space coordinates
+		glm::vec4 clipCoords = glm::vec4(normalizedX, normalizedY, -1.0f, 1.0f);
+
+		// Convert to view space
+		glm::vec4 eyeCoords = glm::inverse(persp_proj) * clipCoords;
+		eyeCoords = glm::vec4(eyeCoords.x, eyeCoords.y, -1.0f, 0.0f);
+
+		// Convert to world space
+		glm::vec3 worldCoords = glm::vec3(glm::inverse(view) * eyeCoords);
+		rayDirection = glm::normalize(worldCoords);
+		rayOrigin = cameraPosition; // Set the origin of the ray at the camera position
+	}
+
+	bool checkRayIntersect(const glm::vec3& sphereCenter, float sphereRadius, const glm::vec3& rayOrigin, const glm::vec3& rayDirection) {
+		glm::vec3 toSphere = sphereCenter - rayOrigin;
+		float tClosest = glm::dot(toSphere, rayDirection);
+		float distanceSquared = glm::dot(toSphere, toSphere) - tClosest * tClosest;
+		return distanceSquared <= (sphereRadius * sphereRadius);
+	}
+
+
+	void processMouseClick(float mouseX, float mouseY) {
+		// Convert screen coordinates to world space (raycast setup)
+		glm::vec3 rayOrigin, rayDirection;
+		calculateRayFromScreen(mouseX, mouseY, rayOrigin, rayDirection);
+
+		// Check for intersection with crabs
+		for (auto& crab : CrabModels) {
+			if (checkRayIntersect(crab.CurrentPosition(), crab.radius, rayOrigin, rayDirection)) {
+				crab.StartRun();
+			}
+		}
+	}
+
 	// record the location of just pressed mouse
 	void mouseButton(int button, int state, int x, int y) {
 		if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
 			lastMouseX = x;
 			lastMouseY = y;
+			processMouseClick(x, y);
 		}
 		else if (button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN) {
 			yaw = defaultYaw;
@@ -143,5 +184,8 @@ namespace keyControl
 
 		glutPostRedisplay();
 	}
+
+
+
 
 };

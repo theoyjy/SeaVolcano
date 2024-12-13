@@ -9,18 +9,23 @@ out vec4 EyeCoords;
 out vec3 Normal;
 out vec2 TexCoords;
 out vec3 FragPos;
+out float time;
 
-uniform bool isInstanced;
+uniform int type; // 2 = instanced, 3 = lava
 uniform mat4 view;
 uniform mat4 proj;
 uniform mat4 model;
+uniform float timeInSeconds;
 
 void main() {
 
-    mat4 effectiveModel = isInstanced ? instanceModel : model;
+    mat4 effectiveModel = type == 2 ? instanceModel : model;
 
     // Pass texture coordinates
+    vec2 texOffset = type !=3 ? vec2(0.0, 0.0) : vec2(timeInSeconds * 0.1, timeInSeconds * 0.1);
     TexCoords = tex_coords;
+
+    time = timeInSeconds;
 
     // world position
     FragPos = vec3(effectiveModel * vec4(vertex_position, 1.0));

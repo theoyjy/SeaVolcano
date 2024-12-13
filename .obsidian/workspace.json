@@ -77,7 +77,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 300,
+    "collapsed": true
   },
   "right": {
     "id": "77ebff9a16bd8f1b",
@@ -164,17 +165,18 @@
   },
   "active": "429f0382886c961d",
   "lastOpenFiles": [
-    "Assets/Volcano.blend@",
-    "Volcano/x64/Debug/Volcano.tlog/link.read.2.tlog",
-    "Volcano/x64/Debug/main.obj",
-    "Volcano/x64/Debug/Volcano.tlog/unsuccessfulbuild",
-    "ParticleSystem.h~RF21a140c.TMP",
-    "ParticleSystem.h~RF2178c47.TMP",
-    "du0javlx.sow~",
-    "ParticleSystem.h~RF2170797.TMP",
-    "ParticleSystem.h~RF216ae99.TMP",
-    "ParticleSystem.h~RF2164967.TMP",
-    "ParticleSystem.h~RF2162630.TMP",
+    "code/simpleFragmentShader.txt",
+    "code/particleVertexSharder.txt",
+    "code/particleFragmentShader.txt",
+    "code/CameraControl.hpp",
+    "code/TextureManager.h",
+    "code/ShaderUtility.h",
+    "code/ProgramSetting.h",
+    "code/ParticleSystem.h",
+    "code/ModelStructure.h",
+    "code/lava.h",
+    "code/main.cpp",
+    "Pasted image 20241213051956.png",
     "Pasted image 20241212022126.png",
     "Pasted image 20241212020708.png",
     "Pasted image 20241212020611.png",
@@ -186,7 +188,6 @@
     "Pasted image 20241212012607.png",
     "Pasted image 20241212012528.png",
     "Pasted image 20241212012426.png",
-    "Pasted image 20241211234858.png",
     "Idea.md",
     "Delivery 1/Project Proposal and Design Document.md"
   ]

@@ -230,7 +230,7 @@ public:
         glUnmapBuffer(GL_ARRAY_BUFFER);
 
         // Set uniforms
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, persp_proj.m);
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(persp_proj));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
         glUniform4f(glGetUniformLocation(shaderProgram, "particleColor"), 1.0f, 1.0f, 1.0f, 1.0f);
 

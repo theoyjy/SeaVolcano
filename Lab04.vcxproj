@@ -156,7 +156,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CameraControl.hpp" />
+    <ClInclude Include="lava.h" />
     <ClInclude Include="maths_funcs.h" />
+    <ClInclude Include="ModelStructure.h" />
     <ClInclude Include="ParticleSystem.h" />
     <ClInclude Include="ProgramSetting.h" />
     <ClInclude Include="ShaderUtility.h" />

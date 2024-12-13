@@ -3,21 +3,20 @@
 in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoords;
+in float time;
 
 uniform vec3 viewPos;           // Camera position
 uniform sampler2D texture1;     // Texture sampler
 
 // Light properties
-uniform vec3 lightDirection;    // Direction of sunlight (normalized)
+uniform vec3 lightDirection;    // Direction of sunlight
 uniform vec3 lightAmbient;      // Ambient light color
 uniform vec3 lightDiffuse;      // Diffuse light color
 uniform float depthFalloff;     // Light attenuation factor with depth
 uniform float causticIntensity; // Strength of sunlight caustics
-uniform float time;             // Animation time
+
 
 out vec4 FragColor;
-
-
 
 // Procedural caustics
 float caustics(vec3 pos) {
